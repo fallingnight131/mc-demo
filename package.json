@@ -1,0 +1,23 @@
+{
+  "name": "mc-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "verify": "node scripts/verify.mjs"
+  },
+  "dependencies": {
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.1",
+    "playwright": "^1.60.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.5",
+    "vitest": "^3.2.6"
+  }
+}
