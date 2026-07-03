@@ -116,6 +116,44 @@
         font-size: 16px;
       }
 
+      /* 触屏 + 竖屏:建议横屏的悬浮提示 */
+      #rotate-hint {
+        display: none;
+        position: fixed;
+        top: 52px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        z-index: 6;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      @media (orientation: portrait) {
+        body.touch #rotate-hint {
+          display: block;
+        }
+      }
+
+      /* 竖屏窄幅:物品栏按视宽缩放,保证十格放得下 */
+      @media (max-width: 520px) {
+        #hotbar {
+          gap: 2px;
+          padding: 3px;
+        }
+        .slot {
+          width: 8.6vw;
+          height: 8.6vw;
+        }
+        .slot-icon {
+          width: 6.6vw;
+          height: 6.6vw;
+        }
+      }
+
       /* 小屏:缩小物品栏与手持方块 */
       @media (max-width: 860px) {
         .slot {
@@ -446,8 +484,8 @@
         <ul>
           <li><kbd>W A S D</kbd>移动</li>
           <li><kbd>鼠标</kbd>视角</li>
-          <li><kbd>左键</kbd>破坏方块</li>
-          <li><kbd>右键</kbd>放置方块</li>
+          <li><kbd>左键</kbd>点按放置 · 长按挖掘</li>
+          <li><kbd>右键</kbd>放置方块(可按住连放)</li>
           <li><kbd>中键</kbd>选取方块</li>
           <li><kbd>滚轮 / 1-9 / 0</kbd>切换物品栏</li>
           <li><kbd>E</kbd>背包(更多方块)</li>
@@ -458,7 +496,7 @@
           <li><kbd>T</kbd>时间快进(看日落)</li>
           <li><kbd>Esc</kbd>暂停</li>
           <li id="touch-help" style="display: none">
-            <kbd>触屏</kbd>左摇杆移动 · 右侧滑动视角 · 跳/挖/放按钮
+            <kbd>触屏</kbd>左摇杆移动 · 点按放置 · 长按挖掘 · 拖动视角
           </li>
         </ul>
         <div class="start">点击开始游戏</div>
@@ -467,6 +505,7 @@
       </div>
     </div>
     <div id="water-tint"></div>
+    <div id="rotate-hint">🔄 建议横屏游玩</div>
     <div id="inventory">
       <div class="inv-panel">
         <div class="inv-title">背包 — 点击方块放入当前手持槽位(E 或 Esc 关闭)</div>

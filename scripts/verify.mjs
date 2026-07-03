@@ -189,6 +189,46 @@ const slotSel = await page.evaluate(
 );
 check('中键选取', slotSel === 3, `选中槽位 ${slotSel + 1}(圆石应为 4)`);
 
+// --- 左键点按 = 放置(基岩版式交互;长按才是挖掘) ---
+await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.setAutoSpawn(false); // 防游荡生物吃掉点按
+  g.mobs.clear();
+  const s = g.spawn;
+  const x = Math.floor(s.x) - 5;
+  const z = Math.floor(s.z) + 2;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.65;
+});
+await page.keyboard.press('Digit9'); // 玻璃(自然界不存在,便于断言)
+await page.waitForTimeout(200);
+await page.mouse.down();
+await page.waitForTimeout(70);
+await page.mouse.up();
+await page.waitForTimeout(250);
+const tapPlaced = await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  for (let dy = 1; dy >= -2; dy--) {
+    for (let dx = -4; dx <= 4; dx++) {
+      for (let dz = -4; dz <= 4; dz++) {
+        const id = g.world.getBlock(
+          Math.floor(p.x) + dx,
+          Math.floor(p.y) + dy,
+          Math.floor(p.z) + dz,
+        );
+        if (id === 12) return true;
+      }
+    }
+  }
+  return false;
+});
+check('左键点按放置', tapPlaced, `70ms 轻点后世界中出现玻璃 ${tapPlaced}`);
+await page.keyboard.press('Digit1');
+
 // --- 背包:E 打开,点选砖块放入当前槽位,再放置到世界 ---
 await page.keyboard.press('Digit5'); // 选中槽位 5(默认木板)
 await page.waitForTimeout(120);
@@ -734,6 +774,58 @@ await mob.mouse.up();
 const tDug = await mob.evaluate(
   ([x, y, z]) => window.__game.world.getBlock(x, y, z) === 0,
   digTarget,
+);
+// 手势:屏幕中心点按放置玻璃,再原地长按挖掉(基岩版交互)
+await mob.evaluate(() => {
+  const g = window.__game;
+  g.mobs.setAutoSpawn(false);
+  g.mobs.clear();
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 4;
+  const z = Math.floor(s.z) - 3;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.6;
+});
+await mob.click('#hotbar .slot:nth-child(9)'); // 点物品栏选玻璃
+await mob.waitForTimeout(250);
+const slotGlass = await mob.evaluate(
+  () => window.__game.ui.hotbar()[window.__game.ui.selected()] === 12,
+);
+const countGlass = () =>
+  mob.evaluate(() => {
+    const g = window.__game;
+    const p = g.player.pos;
+    let n = 0;
+    for (let dy = 1; dy >= -1; dy--) {
+      for (let dx = -4; dx <= 4; dx++) {
+        for (let dz = -4; dz <= 4; dz++) {
+          if (
+            g.world.getBlock(Math.floor(p.x) + dx, Math.floor(p.y) + dy, Math.floor(p.z) + dz) ===
+            12
+          ) {
+            n++;
+          }
+        }
+      }
+    }
+    return n;
+  });
+await mob.mouse.click(406, 187, { delay: 40 }); // 中心点按 → 放置
+await mob.waitForTimeout(300);
+const gTap = (await countGlass()) > 0;
+await mob.mouse.move(406, 187); // 原地长按 → 挖掉刚放的玻璃(0.25s)
+await mob.mouse.down();
+await mob.waitForTimeout(800);
+await mob.mouse.up();
+await mob.waitForTimeout(200);
+const gMined = (await countGlass()) === 0;
+check(
+  '触屏手势(点按放置/长按挖掘)',
+  slotGlass && gTap && gMined,
+  `点物品栏选玻璃 ${slotGlass},点按放置 ${gTap},长按挖掉 ${gMined}`,
 );
 await mob.close();
 check(

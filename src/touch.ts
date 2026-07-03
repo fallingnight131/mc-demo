@@ -14,6 +14,8 @@ export function stickVector(dx: number, dy: number, radius: number): { x: number
 }
 
 const LOOK_SCALE = 2.4; // 触摸像素 → 视角增量的放大(乘在鼠标灵敏度之上)
+const TAP_MS = 230; // 点按(放置) vs 长按(挖掘)的阈值
+const DRAG_SLOP = 12; // 超过该位移视为拖动视角(像素)
 
 export class TouchControls {
   readonly root: HTMLElement;
@@ -22,14 +24,24 @@ export class TouchControls {
   jumpHeld = false;
   mineHeld = false;
   placeHeld = false;
+  /** 长按挖掘手势进行中(挖掘目标 = 指尖所指方块) */
+  mineActive = false;
+  mineX = 0;
+  mineY = 0;
   onPause: () => void = () => {};
   onInventory: () => void = () => {};
+  /** 点按(短触未拖动):MC 基岩版式放置/攻击,参数为屏幕坐标 */
+  onTap: (x: number, y: number) => void = () => {};
 
   private lookDx = 0;
   private lookDy = 0;
   private lookPointer = -1;
   private lookLastX = 0;
   private lookLastY = 0;
+  private lookMode: 'pending' | 'look' | 'mine' = 'pending';
+  private lookStartX = 0;
+  private lookStartY = 0;
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
   private joyPointer = -1;
   private readonly knob: HTMLElement;
   private readonly base: HTMLElement;
@@ -89,23 +101,59 @@ export class TouchControls {
     this.base.addEventListener('pointerup', joyEnd);
     this.base.addEventListener('pointercancel', joyEnd);
 
-    // --- 视角拖动层 ---
+    // --- 视角/交互层:拖动转视角,点按放置,原地长按挖掘(MC 基岩版手势) ---
     look.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       this.lookPointer = e.pointerId;
       look.setPointerCapture(e.pointerId);
       this.lookLastX = e.clientX;
       this.lookLastY = e.clientY;
+      this.lookStartX = e.clientX;
+      this.lookStartY = e.clientY;
+      this.lookMode = 'pending';
+      this.mineX = e.clientX;
+      this.mineY = e.clientY;
+      // 原地按住超过阈值 → 进入长按挖掘
+      this.holdTimer = setTimeout(() => {
+        if (this.lookMode === 'pending') {
+          this.lookMode = 'mine';
+          this.mineActive = true;
+        }
+      }, TAP_MS);
     });
     look.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.lookPointer) return;
+      if (this.lookMode === 'pending') {
+        // 位移超过阈值 → 是拖动视角,不再判定点按/长按
+        if (Math.hypot(e.clientX - this.lookStartX, e.clientY - this.lookStartY) > DRAG_SLOP) {
+          this.lookMode = 'look';
+          this.clearHoldTimer();
+          this.lookLastX = e.clientX;
+          this.lookLastY = e.clientY;
+        }
+        return;
+      }
+      if (this.lookMode === 'mine') {
+        // 挖掘期间允许指尖微调,目标跟随指尖
+        this.mineX = e.clientX;
+        this.mineY = e.clientY;
+        return;
+      }
       this.lookDx += (e.clientX - this.lookLastX) * LOOK_SCALE;
       this.lookDy += (e.clientY - this.lookLastY) * LOOK_SCALE;
       this.lookLastX = e.clientX;
       this.lookLastY = e.clientY;
     });
     const lookEnd = (e: PointerEvent) => {
-      if (e.pointerId === this.lookPointer) this.lookPointer = -1;
+      if (e.pointerId !== this.lookPointer) return;
+      this.lookPointer = -1;
+      this.clearHoldTimer();
+      if (this.lookMode === 'pending') {
+        // 短触未拖动:点按
+        this.onTap(e.clientX, e.clientY);
+      }
+      this.lookMode = 'pending';
+      this.mineActive = false;
     };
     look.addEventListener('pointerup', lookEnd);
     look.addEventListener('pointercancel', lookEnd);
@@ -148,5 +196,12 @@ export class TouchControls {
     this.lookDx = 0;
     this.lookDy = 0;
     return r;
+  }
+
+  private clearHoldTimer(): void {
+    if (this.holdTimer !== null) {
+      clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+    }
   }
 }

@@ -326,15 +326,21 @@ refreshHotbar();
 
 const input = new Input(renderer.domElement);
 
-// --- 触屏设备:虚拟摇杆 + 视角拖动 + 跳/挖/放/暂停/背包按钮 ---
-const touch = isTouchDevice() ? new TouchControls() : null;
+// --- 触屏设备:虚拟摇杆 + 手势(点按放置/长按挖掘/拖动视角)+ 按钮 ---
+// ?touch 参数可在桌面强制启用,便于调试
+const touch =
+  isTouchDevice() || new URLSearchParams(location.search).has('touch')
+    ? new TouchControls()
+    : null;
 if (touch) {
   document.body.appendChild(touch.root);
+  document.body.classList.add('touch'); // 竖屏提示等 CSS 钩子
   touch.onPause = () => input.forceUnlock();
   touch.onInventory = () => {
     if (inventoryOpen) closeInventory(true);
     else if (input.locked) openInventory();
   };
+  touch.onTap = (x, y) => tapInteract(x, y);
   document.getElementById('touch-help')!.style.display = 'list-item';
 }
 
@@ -493,8 +499,11 @@ let mining: MiningState | null = null;
 let leftHeld = false;
 let rightHeld = false;
 let nextPlace = 0;
+// 左键点按(<TAP_MS 松开)= 放置,长按 = 挖掘;挖掉方块或打中生物则不再算点按
+const TAP_MS = 230;
+let leftDownAt = 0;
 
-/** 右键:对准 TNT 则点燃,否则放置 */
+/** 右键/点按:对准 TNT 则点燃,否则放置 */
 function useAt(hit: RayHit | null): void {
   if (hit && hit.id === Block.TNT) {
     igniteTnt(hit.x, hit.y, hit.z);
@@ -503,11 +512,38 @@ function useAt(hit: RayHit | null): void {
   }
 }
 
+/** 屏幕坐标 → 世界射线方向(触屏点按/长按用指尖位置而非准星) */
+function screenDir(px: number, py: number, out: THREE.Vector3): THREE.Vector3 {
+  out.set((px / window.innerWidth) * 2 - 1, -(py / window.innerHeight) * 2 + 1, 0.5);
+  out.unproject(camera);
+  return out.sub(camera.position).normalize();
+}
+
+/** 触屏点按:指尖处生物优先挨拳,否则放置/点燃 */
+function tapInteract(px: number, py: number): void {
+  if (!input.locked) return;
+  hud.punchHand();
+  const dir = screenDir(px, py, dirVec);
+  const origin = eyeVec.copy(camera.position);
+  const mhit = mobs.raycast(origin, dir, REACH);
+  const bhit = world.raycast(origin, dir, REACH);
+  const bdist = bhit
+    ? Math.hypot(bhit.x + 0.5 - origin.x, bhit.y + 0.5 - origin.y, bhit.z + 0.5 - origin.z)
+    : Infinity;
+  if (mhit && mhit.dist < bdist) {
+    sound.mobVoice(mhit.mob.kind, 0.8, true);
+    mobs.hurt(mhit, dir);
+  } else {
+    useAt(bhit);
+  }
+}
+
 input.onMouseDown = (button) => {
   if (button === 0) {
     leftHeld = true;
+    leftDownAt = performance.now();
     hud.punchHand();
-    // 生物比方块近时优先挨拳
+    // 生物比方块近时优先挨拳(打中生物后松开不再触发点按放置)
     const mhit = mobs.raycast(player.eyePos(eyeVec), lookDir(dirVec), REACH);
     if (mhit) {
       const bhit = aimHit();
@@ -521,6 +557,7 @@ input.onMouseDown = (button) => {
       if (mhit.dist < bdist) {
         sound.mobVoice(mhit.mob.kind, 0.8, true);
         mobs.hurt(mhit, dirVec);
+        leftDownAt = 0;
       }
     }
   } else if (button === 2) {
@@ -534,6 +571,12 @@ input.onMouseDown = (button) => {
 };
 input.onMouseUp = (button) => {
   if (button === 0) {
+    // 点按:未达长按阈值且没挖掉东西 → 放置
+    if (leftDownAt > 0 && performance.now() - leftDownAt < TAP_MS) {
+      useAt(aimHit());
+      hud.punchHand();
+    }
+    leftDownAt = 0;
     leftHeld = false;
     mining = null;
   } else if (button === 2) {
@@ -704,29 +747,40 @@ function frame(now: number): void {
   }
 
   if (input.locked) {
-    // 按住左键(或触屏挖掘钮):挖掘进度,移开目标即重置
-    const digHeld = leftHeld || (touch?.mineHeld ?? false);
-    if (digHeld && hit && BLOCK_DEFS[hit.id].hardness !== Infinity) {
-      if (!mining || mining.x !== hit.x || mining.y !== hit.y || mining.z !== hit.z) {
+    // 长按左键/触屏长按/挖掘钮:挖掘进度,移开目标即重置。
+    // 触屏长按的目标是指尖所指方块(基岩版手势),其余用准星。
+    let digHit = hit;
+    let digActive = leftHeld || (touch?.mineHeld ?? false);
+    if (touch?.mineActive) {
+      digHit = world.raycast(
+        eyeVec.copy(camera.position),
+        screenDir(touch.mineX, touch.mineY, dirVec),
+        REACH,
+      );
+      digActive = true;
+    }
+    if (digActive && digHit && BLOCK_DEFS[digHit.id].hardness !== Infinity) {
+      if (!mining || mining.x !== digHit.x || mining.y !== digHit.y || mining.z !== digHit.z) {
         mining = {
-          x: hit.x,
-          y: hit.y,
-          z: hit.z,
+          x: digHit.x,
+          y: digHit.y,
+          z: digHit.z,
           progress: 0,
-          total: BLOCK_DEFS[hit.id].hardness,
+          total: BLOCK_DEFS[digHit.id].hardness,
           hitTimer: 0,
         };
       }
       mining.progress += dt;
       mining.hitTimer -= dt;
       if (mining.hitTimer <= 0) {
-        sound.hit(hit.id);
+        sound.hit(digHit.id);
         hud.punchHand();
         mining.hitTimer = 0.22;
       }
       if (mining.progress >= mining.total) {
-        breakBlock(hit);
+        breakBlock(digHit);
         mining = null;
+        leftDownAt = 0; // 挖掉了东西,松开不再算点按
       }
     } else {
       mining = null;
