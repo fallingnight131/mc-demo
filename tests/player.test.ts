@@ -64,6 +64,71 @@ describe('player physics', () => {
     expect(p.onGround).toBe(true);
   });
 
+  it('水池逃脱:贴岸游泳可以翻上一格高的岸', () => {
+    // 地面 y<=10;x>=15 是岸(实体到 y=13,岸面 y=14);x<15 的 y=11..13 为水
+    const w: BlockWorld = {
+      isSolid(x, y, z) {
+        void z;
+        if (y <= 10) return true;
+        return x >= 15 && y <= 13;
+      },
+      getBlock(x, y, z) {
+        void z;
+        if (x < 15 && y >= 11 && y <= 13) return Block.Water;
+        return Block.Air;
+      },
+    };
+    const p = new Player(w);
+    p.pos.set(12.5, 11.01, 0.5); // 沉在 3 格深的池底
+    p.yaw = -Math.PI / 2; // 面向 +x(岸的方向)
+    expect(p.isInWater()).toBe(true);
+    simulate(p, { forward: 1, strafe: 0, jump: true, sprint: false }, 4);
+    // 必须爬上岸:站到 x>15 的岸面(y>=14)之上,且完全脱水
+    expect(p.pos.x).toBeGreaterThan(15);
+    expect(p.pos.y).toBeGreaterThanOrEqual(13.99);
+    expect(p.isTouchingWater()).toBe(false);
+  });
+
+  it('深水中按住空格持续上浮', () => {
+    const w: BlockWorld = {
+      isSolid(x, y, z) {
+        void x;
+        void z;
+        return y <= 10;
+      },
+      getBlock(x, y, z) {
+        void x;
+        void z;
+        return y >= 11 && y <= 20 ? Block.Water : Block.Air;
+      },
+    };
+    const p = new Player(w);
+    p.pos.set(0.5, 11.01, 0.5);
+    simulate(p, { ...idle, jump: true }, 3);
+    expect(p.pos.y).toBeGreaterThan(18); // 从 10 格深的水底浮到接近水面
+  });
+
+  it('水中下沉速度被阻尼限制', () => {
+    const w: BlockWorld = {
+      isSolid(x, y, z) {
+        void x;
+        void z;
+        return y <= 10;
+      },
+      getBlock(x, y, z) {
+        void x;
+        void z;
+        return y >= 11 && y <= 20 ? Block.Water : Block.Air;
+      },
+    };
+    const p = new Player(w);
+    p.pos.set(0.5, 19, 0.5);
+    simulate(p, idle, 1);
+    // 自由落体 1 秒会掉 ~14 格;水中限速后只应缓降 2~3.5 格
+    expect(p.pos.y).toBeGreaterThan(15.5);
+    expect(p.pos.y).toBeLessThan(18);
+  });
+
   it('天花板会挡住跳跃', () => {
     const w: BlockWorld = {
       isSolid(x, y, z) {

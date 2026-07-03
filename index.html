@@ -106,6 +106,66 @@
         height: 40px;
         image-rendering: pixelated;
       }
+      .slot-count {
+        position: absolute;
+        right: 3px;
+        bottom: 1px;
+        font-size: 11px;
+        font-weight: bold;
+        color: #fff;
+        text-shadow: 0 1px 1px #000;
+        pointer-events: none;
+      }
+
+      #inventory {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 12, 22, 0.55);
+        z-index: 8;
+      }
+      #inventory.open {
+        display: flex;
+      }
+      .inv-panel {
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 10px;
+        padding: 16px 18px;
+        max-width: min(640px, 92vw);
+      }
+      .inv-title {
+        color: #d8e2f0;
+        font-size: 14px;
+        margin-bottom: 12px;
+        text-align: center;
+      }
+      #inv-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+      }
+      .inv-slot {
+        cursor: pointer;
+      }
+      .inv-slot:hover {
+        border-color: #ffe27a;
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .inv-name {
+        position: absolute;
+        left: 50%;
+        bottom: -2px;
+        transform: translateX(-50%);
+        font-size: 9px;
+        color: rgba(255, 255, 255, 0.85);
+        text-shadow: 0 1px 1px #000;
+        white-space: nowrap;
+        pointer-events: none;
+      }
 
       #item-name {
         position: fixed;
@@ -122,6 +182,32 @@
       }
       #item-name.visible {
         opacity: 1;
+      }
+
+      #hand {
+        position: fixed;
+        right: 4vw;
+        bottom: -3vh;
+        width: clamp(120px, 16vw, 220px);
+        image-rendering: pixelated;
+        pointer-events: none;
+        z-index: 4;
+        transform-origin: 90% 100%;
+        filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+      }
+      #hand.punch {
+        animation: punch 0.14s ease-out;
+      }
+      @keyframes punch {
+        0% {
+          transform: translate(0, 0) rotate(0deg);
+        }
+        45% {
+          transform: translate(-26px, 30px) rotate(-16deg);
+        }
+        100% {
+          transform: translate(0, 0) rotate(0deg);
+        }
       }
 
       #debug {
@@ -205,6 +291,22 @@
           opacity: 0.45;
         }
       }
+      #overlay-hint {
+        margin-top: 10px;
+        min-height: 16px;
+        font-size: 12px;
+        color: #ffb066;
+      }
+      #reset-save {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #8fa4c0;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      #reset-save:hover {
+        color: #cfe0f5;
+      }
     </style>
   </head>
   <body>
@@ -218,17 +320,30 @@
           <li><kbd>左键</kbd>破坏方块</li>
           <li><kbd>右键</kbd>放置方块</li>
           <li><kbd>中键</kbd>选取方块</li>
-          <li><kbd>滚轮 / 1-9</kbd>切换物品栏</li>
+          <li><kbd>滚轮 / 1-9 / 0</kbd>切换物品栏</li>
+          <li><kbd>E</kbd>背包(更多方块)</li>
+          <li><kbd>右键 TNT</kbd>点燃(小心连锁)</li>
           <li><kbd>空格</kbd>跳跃 / 游泳</li>
           <li><kbd>Shift</kbd>疾跑</li>
+          <li><kbd>M</kbd>静音切换</li>
+          <li><kbd>T</kbd>时间快进(看日落)</li>
           <li><kbd>Esc</kbd>暂停</li>
         </ul>
         <div class="start">点击开始游戏</div>
+        <div id="overlay-hint"></div>
+        <div id="reset-save">清除存档,重开新世界</div>
       </div>
     </div>
     <div id="water-tint"></div>
+    <div id="inventory">
+      <div class="inv-panel">
+        <div class="inv-title">背包 — 点击方块放入当前手持槽位(E 或 Esc 关闭)</div>
+        <div id="inv-grid"></div>
+      </div>
+    </div>
     <div id="crosshair"></div>
     <div id="item-name"></div>
+    <img id="hand" alt="" />
     <div id="hotbar"></div>
     <div id="debug"></div>
     <script type="module" src="/src/main.ts"></script>

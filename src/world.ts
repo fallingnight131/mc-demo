@@ -1,6 +1,6 @@
 // 世界:区块管理、按需流式生成/网格化、方块读写、体素射线检测
 import * as THREE from 'three';
-import { Block, BLOCK_DEFS } from './blocks';
+import { Block, BLOCK_DEFS, isWater } from './blocks';
 import { buildChunkGeometry, Chunk } from './chunk';
 import {
   CHUNK_SIZE,
@@ -10,6 +10,7 @@ import {
   UNLOAD_DISTANCE,
   WORLD_HEIGHT,
 } from './config';
+import { WaterSim } from './water';
 import { Generator } from './worldgen';
 
 const CS = CHUNK_SIZE;
@@ -25,9 +26,16 @@ export interface RayHit {
   id: number;
 }
 
+/** 存档中的编辑记录:区块键 → [格子索引, 方块id][] */
+export type EditData = Record<string, Array<[number, number]>>;
+
 export class World {
   readonly gen: Generator;
   readonly group = new THREE.Group();
+  readonly water = new WaterSim(this);
+  /** 玩家编辑覆盖层:区块卸载重生成后回放,亦用于存档 */
+  private readonly edits = new Map<string, Map<number, number>>();
+  editsDirty = false;
   private readonly chunks = new Map<string, Chunk>();
   private readonly offsets: Array<[number, number]>; // 按距离升序的环形偏移
   private lastCX = Number.NaN;
@@ -77,25 +85,104 @@ export class World {
   }
 
   setBlock(x: number, y: number, z: number, id: number): void {
-    if (y < 0 || y >= WH) return;
+    const dirty = new Set<Chunk>();
+    if (!this.setRaw(x, y, z, id, dirty)) return;
+    this.recordEdit(x, y, z, id);
+    this.remeshChunks(dirty);
+    this.water.wakeAround(x, y, z);
+  }
+
+  private recordEdit(x: number, y: number, z: number, id: number): void {
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const k = this.key(cx, cz);
+    let m = this.edits.get(k);
+    if (!m) {
+      m = new Map();
+      this.edits.set(k, m);
+    }
+    m.set((y * CS + (z - cz * CS)) * CS + (x - cx * CS), id);
+    this.editsDirty = true;
+  }
+
+  /** 序列化编辑记录(存档用) */
+  serializeEdits(): EditData {
+    const out: EditData = {};
+    for (const [k, m] of this.edits) {
+      out[k] = [...m.entries()];
+    }
+    return out;
+  }
+
+  /** 载入编辑记录,必须在生成任何区块(warmup)之前调用 */
+  loadEdits(data: EditData): void {
+    for (const [k, list] of Object.entries(data)) {
+      this.edits.set(k, new Map(list));
+    }
+  }
+
+  /** 只写数据并收集待重建区块,不触发网格重建(供水流模拟批量使用) */
+  setRaw(x: number, y: number, z: number, id: number, dirty: Set<Chunk>): boolean {
+    if (y < 0 || y >= WH) return false;
     const cx = Math.floor(x / CS);
     const cz = Math.floor(z / CS);
     const c = this.chunks.get(this.key(cx, cz));
-    if (!c) return;
+    if (!c) return false;
     const lx = x - cx * CS;
     const lz = z - cz * CS;
+    if (c.get(lx, y, lz) === id) return false;
     c.set(lx, y, lz, id);
-    this.rebuildMesh(c);
+    dirty.add(c);
     // 边界方块同时重建相邻区块,消除暴露面
-    if (lx === 0) this.rebuildIfMeshed(cx - 1, cz);
-    if (lx === CS - 1) this.rebuildIfMeshed(cx + 1, cz);
-    if (lz === 0) this.rebuildIfMeshed(cx, cz - 1);
-    if (lz === CS - 1) this.rebuildIfMeshed(cx, cz + 1);
+    if (lx === 0) this.addIfPresent(cx - 1, cz, dirty);
+    if (lx === CS - 1) this.addIfPresent(cx + 1, cz, dirty);
+    if (lz === 0) this.addIfPresent(cx, cz - 1, dirty);
+    if (lz === CS - 1) this.addIfPresent(cx, cz + 1, dirty);
+    return true;
   }
 
-  private rebuildIfMeshed(cx: number, cz: number): void {
+  remeshChunks(dirty: Set<Chunk>): void {
+    for (const c of dirty) {
+      if (c.meshed) this.rebuildMesh(c);
+    }
+  }
+
+  /**
+   * 爆炸:清除半径内的方块(保留基岩与水),边缘随机化更自然。
+   * 返回被摧毁的方块列表 [x, y, z, id],供连锁引爆与粒子使用。
+   */
+  explode(cx: number, cy: number, cz: number, radius: number): Array<[number, number, number, number]> {
+    const removed: Array<[number, number, number, number]> = [];
+    const dirty = new Set<Chunk>();
+    const r = Math.ceil(radius);
+    const r2 = radius * radius;
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dz = -r; dz <= r; dz++) {
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 > r2 * (0.72 + Math.random() * 0.42)) continue;
+          const x = cx + dx;
+          const y = cy + dy;
+          const z = cz + dz;
+          const id = this.getBlock(x, y, z);
+          if (id === Block.Air || id === Block.Bedrock || id === Block.Obsidian || isWater(id)) {
+            continue; // 黑曜石与基岩一样抗爆
+          }
+          if (this.setRaw(x, y, z, Block.Air, dirty)) {
+            removed.push([x, y, z, id]);
+            this.recordEdit(x, y, z, Block.Air);
+            this.water.wakeAround(x, y, z);
+          }
+        }
+      }
+    }
+    this.remeshChunks(dirty);
+    return removed;
+  }
+
+  private addIfPresent(cx: number, cz: number, dirty: Set<Chunk>): void {
     const c = this.chunks.get(this.key(cx, cz));
-    if (c && c.meshed) this.rebuildMesh(c);
+    if (c) dirty.add(c);
   }
 
   private ensureData(cx: number, cz: number): Chunk {
@@ -104,6 +191,17 @@ export class World {
     if (!c) {
       c = new Chunk(cx, cz, this.gen.generateChunk(cx, cz));
       this.chunks.set(k, c);
+      // 回放该区块的玩家编辑,并唤醒水流以重新收敛(挖开的湖岸等)
+      const m = this.edits.get(k);
+      if (m) {
+        for (const [idx, id] of m) {
+          c.data[idx] = id;
+          const y = Math.floor(idx / (CS * CS));
+          const lz = Math.floor(idx / CS) % CS;
+          const lx = idx % CS;
+          this.water.wakeAround(cx * CS + lx, y, cz * CS + lz);
+        }
+      }
     }
     return c;
   }
@@ -162,8 +260,9 @@ export class World {
     }
   }
 
-  /** 每帧调用:限额推进数据生成与网格化,玩家跨区块时卸载远处 */
-  update(px: number, pz: number): void {
+  /** 每帧调用:水流模拟 + 限额推进数据生成与网格化,玩家跨区块时卸载远处 */
+  update(px: number, pz: number, dt = 0): void {
+    this.water.update(dt);
     const pcx = Math.floor(px / CS);
     const pcz = Math.floor(pz / CS);
 
@@ -254,7 +353,7 @@ export class World {
       }
       if (t > maxDist) return null;
       const id = this.getBlock(x, y, z);
-      if (id !== Block.Air && id !== Block.Water && BLOCK_DEFS[id].solid) {
+      if (BLOCK_DEFS[id].solid) {
         return { x, y, z, nx, ny, nz, id };
       }
     }

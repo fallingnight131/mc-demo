@@ -23,6 +23,18 @@ export function hash2(x: number, y: number, seed: number): number {
   return (h >>> 0) / 4294967296;
 }
 
+/** 整数坐标三维哈希,返回 [0, 1) */
+export function hash3(x: number, y: number, z: number, seed: number): number {
+  let h = seed >>> 0;
+  h = Math.imul(h ^ Math.imul(x | 0, 0x27d4eb2d), 0x165667b1);
+  h = Math.imul(h ^ Math.imul(y | 0, 0x9e3779b1), 0x85ebca6b);
+  h = Math.imul(h ^ Math.imul(z | 0, 0x94d049bb), 0x2545f491);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
 /** 二维值噪声 + fbm 分形叠加,输出约 [-1, 1] */
 export class Noise2D {
   constructor(private readonly seed: number) {}

@@ -30,7 +30,8 @@ The goal is to create a demo, not a full Minecraft clone.
 * Do not stop to ask questions.
 * Fix errors automatically.
 * Test changes when possible.
-* Continue until a playable demo exists.
+* read and update progress.md in every loop
+* commit git in every loop
 
 ## Priorities
 
@@ -38,6 +39,3 @@ The goal is to create a demo, not a full Minecraft clone.
 2. Make it stable.
 3. Make it look good.
 4. Optimize performance.
-
-Do not over-engineer.
-A working demo is more important than perfect architecture.

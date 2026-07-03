@@ -1,6 +1,6 @@
 // 区块数据与网格构建:逐方块面剔除,顶点色做朝向明暗,UV 采样纹理图集
 import * as THREE from 'three';
-import { Block, BLOCK_DEFS, tileUV } from './blocks';
+import { Block, BLOCK_DEFS, isWater, tileUV, waterLevel } from './blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT } from './config';
 
 const CS = CHUNK_SIZE;
@@ -48,7 +48,8 @@ const FACES: FaceDef[] = [
   { dx: 0, dy: 0, dz: -1, corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], brightness: 0.82, tileIndex: 5 },
 ];
 
-const WATER_TOP_DROP = 0.12; // 水面比方块顶面略低
+// 各水位等级的水面下沉量(等级 4..1),索引 = 等级
+const WATER_DROPS = [0, 0.7, 0.52, 0.34, 0.14];
 
 class GeoArrays {
   positions: number[] = [];
@@ -102,21 +103,31 @@ export function buildChunkGeometry(
         if (id === Block.Air) continue;
         const def = BLOCK_DEFS[id];
         const tiles = def.tiles!;
-        const isWater = id === Block.Water;
-        const target = isWater ? water : solid;
+        const blockIsWater = isWater(id);
+        const target = blockIsWater ? water : solid;
+        // 水面按水位下沉;若上方也是水(瀑布柱)则保持满格不留缝
+        const topDrop =
+          blockIsWater && !isWater(blockAt(lx, y + 1, lz))
+            ? WATER_DROPS[waterLevel(id)]
+            : 0;
 
         for (const f of FACES) {
           const n = blockAt(lx + f.dx, y + f.dy, lz + f.dz);
-          if (n === id) continue; // 同类相邻面剔除(水-水、玻璃-玻璃)
+          // 同类相邻面剔除:任意水之间、相同方块之间(玻璃-玻璃)
+          if (blockIsWater ? isWater(n) : n === id) continue;
           if (BLOCK_DEFS[n].opaque) continue;
 
-          const { u0, v0, u1, v1 } = tileUV(tiles[f.tileIndex]);
+          // 水使用独立贴图(全 [0,1] UV),其余方块采样图集
+          const { u0, v0, u1, v1 } = blockIsWater
+            ? { u0: 0, v0: 0, u1: 1, v1: 1 }
+            : tileUV(tiles[f.tileIndex]);
           const base = target.positions.length / 3;
-          const topDrop = isWater && f.dy === 1 ? WATER_TOP_DROP : 0;
 
           for (let i = 0; i < 4; i++) {
             const c = f.corners[i];
-            target.positions.push(ox + lx + c[0], y + c[1] - topDrop, oz + lz + c[2]);
+            // 顶部顶点统一下沉,侧面随之变矮,避免侧壁高出水面
+            const py = c[1] === 1 ? y + 1 - topDrop : y;
+            target.positions.push(ox + lx + c[0], py, oz + lz + c[2]);
             const b = f.brightness;
             target.colors.push(b, b, b);
           }

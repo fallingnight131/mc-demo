@@ -1,6 +1,6 @@
 // 方块与纹理图集定义(纯数据,不依赖 DOM)
 
-export const ATLAS_COLS = 4;
+export const ATLAS_COLS = 8;
 export const ATLAS_ROWS = 4;
 export const TILE_PX = 16;
 
@@ -21,6 +21,20 @@ export const Tile = {
   Snow: 12,
   SnowSide: 13,
   Glass: 14,
+  TntSide: 15,
+  TntTop: 16,
+  TntBottom: 17,
+  Sandstone: 18,
+  Brick: 19,
+  StoneBrick: 20,
+  CoalOre: 21,
+  IronOre: 22,
+  GoldOre: 23,
+  DiamondOre: 24,
+  Obsidian: 25,
+  PumpkinSide: 26,
+  PumpkinTop: 27,
+  PumpkinFace: 28,
 } as const;
 
 export const Block = {
@@ -34,9 +48,24 @@ export const Block = {
   Plank: 7,
   Cobble: 8,
   Bedrock: 9,
-  Water: 10,
+  Water: 10, // 水源(等级 4)
   Snow: 11,
   Glass: 12,
+  // 流动水,等级 4..1(等级越低水面越浅)
+  Flow4: 13,
+  Flow3: 14,
+  Flow2: 15,
+  Flow1: 16,
+  TNT: 17,
+  Sandstone: 18,
+  Brick: 19,
+  StoneBrick: 20,
+  CoalOre: 21,
+  IronOre: 22,
+  GoldOre: 23,
+  DiamondOre: 24,
+  Obsidian: 25,
+  Pumpkin: 26,
 } as const;
 
 export interface BlockDef {
@@ -45,26 +74,61 @@ export interface BlockDef {
   tiles: [number, number, number, number, number, number] | null;
   solid: boolean; // 是否参与碰撞
   opaque: boolean; // 是否完全遮挡相邻面
+  hardness: number; // 徒手挖掘耗时(秒),Infinity 表示不可破坏
 }
 
 const T = Tile;
+const WATER_TILES: [number, number, number, number, number, number] = [
+  T.Water, T.Water, T.Water, T.Water, T.Water, T.Water,
+];
 export const BLOCK_DEFS: BlockDef[] = [
-  { name: '空气', tiles: null, solid: false, opaque: false },
-  { name: '草方块', tiles: [T.GrassSide, T.GrassSide, T.GrassTop, T.Dirt, T.GrassSide, T.GrassSide], solid: true, opaque: true },
-  { name: '泥土', tiles: [T.Dirt, T.Dirt, T.Dirt, T.Dirt, T.Dirt, T.Dirt], solid: true, opaque: true },
-  { name: '石头', tiles: [T.Stone, T.Stone, T.Stone, T.Stone, T.Stone, T.Stone], solid: true, opaque: true },
-  { name: '沙子', tiles: [T.Sand, T.Sand, T.Sand, T.Sand, T.Sand, T.Sand], solid: true, opaque: true },
-  { name: '原木', tiles: [T.LogSide, T.LogSide, T.LogTop, T.LogTop, T.LogSide, T.LogSide], solid: true, opaque: true },
-  { name: '树叶', tiles: [T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves], solid: true, opaque: true },
-  { name: '木板', tiles: [T.Plank, T.Plank, T.Plank, T.Plank, T.Plank, T.Plank], solid: true, opaque: true },
-  { name: '圆石', tiles: [T.Cobble, T.Cobble, T.Cobble, T.Cobble, T.Cobble, T.Cobble], solid: true, opaque: true },
-  { name: '基岩', tiles: [T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock], solid: true, opaque: true },
-  { name: '水', tiles: [T.Water, T.Water, T.Water, T.Water, T.Water, T.Water], solid: false, opaque: false },
-  { name: '雪块', tiles: [T.SnowSide, T.SnowSide, T.Snow, T.Dirt, T.SnowSide, T.SnowSide], solid: true, opaque: true },
-  { name: '玻璃', tiles: [T.Glass, T.Glass, T.Glass, T.Glass, T.Glass, T.Glass], solid: true, opaque: false },
+  { name: '空气', tiles: null, solid: false, opaque: false, hardness: 0 },
+  { name: '草方块', tiles: [T.GrassSide, T.GrassSide, T.GrassTop, T.Dirt, T.GrassSide, T.GrassSide], solid: true, opaque: true, hardness: 0.45 },
+  { name: '泥土', tiles: [T.Dirt, T.Dirt, T.Dirt, T.Dirt, T.Dirt, T.Dirt], solid: true, opaque: true, hardness: 0.4 },
+  { name: '石头', tiles: [T.Stone, T.Stone, T.Stone, T.Stone, T.Stone, T.Stone], solid: true, opaque: true, hardness: 1.2 },
+  { name: '沙子', tiles: [T.Sand, T.Sand, T.Sand, T.Sand, T.Sand, T.Sand], solid: true, opaque: true, hardness: 0.35 },
+  { name: '原木', tiles: [T.LogSide, T.LogSide, T.LogTop, T.LogTop, T.LogSide, T.LogSide], solid: true, opaque: true, hardness: 0.9 },
+  { name: '树叶', tiles: [T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves], solid: true, opaque: true, hardness: 0.2 },
+  { name: '木板', tiles: [T.Plank, T.Plank, T.Plank, T.Plank, T.Plank, T.Plank], solid: true, opaque: true, hardness: 0.8 },
+  { name: '圆石', tiles: [T.Cobble, T.Cobble, T.Cobble, T.Cobble, T.Cobble, T.Cobble], solid: true, opaque: true, hardness: 1.3 },
+  { name: '基岩', tiles: [T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock], solid: true, opaque: true, hardness: Infinity },
+  { name: '水', tiles: WATER_TILES, solid: false, opaque: false, hardness: Infinity },
+  { name: '雪块', tiles: [T.SnowSide, T.SnowSide, T.Snow, T.Dirt, T.SnowSide, T.SnowSide], solid: true, opaque: true, hardness: 0.3 },
+  { name: '玻璃', tiles: [T.Glass, T.Glass, T.Glass, T.Glass, T.Glass, T.Glass], solid: true, opaque: false, hardness: 0.25 },
+  { name: '流水', tiles: WATER_TILES, solid: false, opaque: false, hardness: Infinity },
+  { name: '流水', tiles: WATER_TILES, solid: false, opaque: false, hardness: Infinity },
+  { name: '流水', tiles: WATER_TILES, solid: false, opaque: false, hardness: Infinity },
+  { name: '流水', tiles: WATER_TILES, solid: false, opaque: false, hardness: Infinity },
+  { name: 'TNT', tiles: [T.TntSide, T.TntSide, T.TntTop, T.TntBottom, T.TntSide, T.TntSide], solid: true, opaque: true, hardness: 0.25 },
+  { name: '砂岩', tiles: [T.Sandstone, T.Sandstone, T.Sand, T.Sandstone, T.Sandstone, T.Sandstone], solid: true, opaque: true, hardness: 0.9 },
+  { name: '砖块', tiles: [T.Brick, T.Brick, T.Brick, T.Brick, T.Brick, T.Brick], solid: true, opaque: true, hardness: 1.4 },
+  { name: '石砖', tiles: [T.StoneBrick, T.StoneBrick, T.StoneBrick, T.StoneBrick, T.StoneBrick, T.StoneBrick], solid: true, opaque: true, hardness: 1.3 },
+  { name: '煤矿石', tiles: [T.CoalOre, T.CoalOre, T.CoalOre, T.CoalOre, T.CoalOre, T.CoalOre], solid: true, opaque: true, hardness: 1.6 },
+  { name: '铁矿石', tiles: [T.IronOre, T.IronOre, T.IronOre, T.IronOre, T.IronOre, T.IronOre], solid: true, opaque: true, hardness: 1.8 },
+  { name: '金矿石', tiles: [T.GoldOre, T.GoldOre, T.GoldOre, T.GoldOre, T.GoldOre, T.GoldOre], solid: true, opaque: true, hardness: 1.8 },
+  { name: '钻石矿石', tiles: [T.DiamondOre, T.DiamondOre, T.DiamondOre, T.DiamondOre, T.DiamondOre, T.DiamondOre], solid: true, opaque: true, hardness: 2.2 },
+  { name: '黑曜石', tiles: [T.Obsidian, T.Obsidian, T.Obsidian, T.Obsidian, T.Obsidian, T.Obsidian], solid: true, opaque: true, hardness: 4 },
+  { name: '南瓜', tiles: [T.PumpkinSide, T.PumpkinSide, T.PumpkinTop, T.PumpkinTop, T.PumpkinFace, T.PumpkinSide], solid: true, opaque: true, hardness: 0.5 },
 ];
 
-/** 物品栏中可放置的方块(对应按键 1-9) */
+/** 是否为水(水源或任意等级流水) */
+export function isWater(id: number): boolean {
+  return id === Block.Water || (id >= Block.Flow4 && id <= Block.Flow1);
+}
+
+/** 水位等级:水源/Flow4 为 4,Flow1 为 1,非水为 0 */
+export function waterLevel(id: number): number {
+  if (id === Block.Water) return 4;
+  if (id >= Block.Flow4 && id <= Block.Flow1) return 4 - (id - Block.Flow4);
+  return 0;
+}
+
+/** 等级对应的流水方块 id(1..4) */
+export function flowId(level: number): number {
+  return Block.Flow4 + (4 - level);
+}
+
+/** 可放置的方块(前 10 个为默认快捷栏,其余通过背包 E 选用) */
 export const PLACEABLE: number[] = [
   Block.Grass,
   Block.Dirt,
@@ -75,6 +139,17 @@ export const PLACEABLE: number[] = [
   Block.Leaves,
   Block.Sand,
   Block.Glass,
+  Block.TNT,
+  Block.Sandstone,
+  Block.Brick,
+  Block.StoneBrick,
+  Block.Snow,
+  Block.Obsidian,
+  Block.Pumpkin,
+  Block.CoalOre,
+  Block.IronOre,
+  Block.GoldOre,
+  Block.DiamondOre,
 ];
 
 export interface TileUV {

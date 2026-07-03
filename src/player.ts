@@ -1,6 +1,6 @@
 // 玩家:重力、跳跃、游泳与逐轴 AABB 体素碰撞
 import * as THREE from 'three';
-import { Block } from './blocks';
+import { isWater } from './blocks';
 import {
   EYE_HEIGHT,
   GRAVITY,
@@ -40,6 +40,7 @@ export class Player {
   yaw = 0;
   pitch = 0;
   onGround = false;
+  private hitWall = false; // 本子步内是否发生水平碰撞(用于出水攀爬)
 
   constructor(private readonly world: BlockWorld) {}
 
@@ -48,12 +49,23 @@ export class Player {
   }
 
   isInWater(): boolean {
-    return (
+    return isWater(
       this.world.getBlock(
         Math.floor(this.pos.x),
         Math.floor(this.pos.y + 0.9),
         Math.floor(this.pos.z),
-      ) === Block.Water
+      ),
+    );
+  }
+
+  /** 脚部是否接触水(比身体中心宽松,用于水面过渡与涉水判定) */
+  isTouchingWater(): boolean {
+    return isWater(
+      this.world.getBlock(
+        Math.floor(this.pos.x),
+        Math.floor(this.pos.y + 0.1),
+        Math.floor(this.pos.z),
+      ),
     );
   }
 
@@ -65,10 +77,12 @@ export class Player {
   }
 
   private substep(dt: number, input: PlayerInput): void {
-    const inWater = this.isInWater();
+    const submerged = this.isInWater(); // 身体中心没入水中
+    const feetInWater = this.isTouchingWater(); // 至少脚部在水里(含水面过渡区)
 
-    // 水平目标速度(基于朝向)
-    const speed = (input.sprint ? SPRINT_SPEED : WALK_SPEED) * (inWater ? 0.55 : 1);
+    // 水平目标速度(基于朝向):水中略减速
+    const speedFactor = submerged ? 0.6 : feetInWater ? 0.85 : 1;
+    const speed = (input.sprint ? SPRINT_SPEED : WALK_SPEED) * speedFactor;
     const s = Math.sin(this.yaw);
     const c = Math.cos(this.yaw);
     let tx = -s * input.forward + c * input.strafe;
@@ -81,16 +95,25 @@ export class Player {
       tx = 0;
       tz = 0;
     }
-    const accel = this.onGround || inWater ? 25 : 6;
+    const accel = this.onGround || feetInWater ? 25 : 6;
     this.vel.x = approach(this.vel.x, tx, accel * dt);
     this.vel.z = approach(this.vel.z, tz, accel * dt);
 
     // 垂直速度
-    if (inWater) {
+    if (submerged) {
+      // 水下:低重力、慢沉降,按住跳跃持续上游
       if (input.jump) {
-        this.vel.y = approach(this.vel.y, 3.2, 24 * dt);
+        this.vel.y = approach(this.vel.y, 3.8, 30 * dt);
       } else {
-        this.vel.y = Math.max(this.vel.y - 12 * dt, -4);
+        this.vel.y = Math.max(this.vel.y - 7 * dt, -3.2);
+      }
+    } else if (feetInWater && !this.onGround) {
+      // 水面过渡区(中心已出水、脚还在水里):重力减半,
+      // 按住跳跃仍能向上顶,避免在水面反复浮沉
+      if (input.jump) {
+        this.vel.y = approach(this.vel.y, 3.2, 26 * dt);
+      } else {
+        this.vel.y = Math.max(this.vel.y - 14 * dt, -50);
       }
     } else {
       if (input.jump && this.onGround) this.vel.y = JUMP_SPEED;
@@ -98,9 +121,20 @@ export class Player {
     }
 
     this.onGround = false;
+    this.hitWall = false;
     this.moveAxis(1, this.vel.y * dt);
     this.moveAxis(0, this.vel.x * dt);
     this.moveAxis(2, this.vel.z * dt);
+
+    // MC 式出水攀爬:在水中贴着方块边缘推进时获得向上推力,
+    // 持续顶墙会一格格"翻"上岸,玩家不会被困在水里
+    if (
+      (submerged || feetInWater) &&
+      this.hitWall &&
+      (input.forward !== 0 || input.strafe !== 0)
+    ) {
+      this.vel.y = Math.max(this.vel.y, 5.6);
+    }
   }
 
   private moveAxis(axis: 0 | 1 | 2, delta: number): void {
@@ -130,6 +164,7 @@ export class Player {
       }
     }
     if (!hit) return;
+    if (axis !== 1) this.hitWall = true;
 
     let clamped: number;
     if (axis === 0) {

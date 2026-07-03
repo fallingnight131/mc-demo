@@ -2,7 +2,7 @@
 // 全部基于世界坐标的确定性函数,保证跨区块一致。
 import { Block } from './blocks';
 import { CHUNK_SIZE, SEA_LEVEL, SNOW_LEVEL, WORLD_HEIGHT } from './config';
-import { hash2, Noise2D } from './noise';
+import { hash2, hash3, Noise2D } from './noise';
 
 const CS = CHUNK_SIZE;
 const WH = WORLD_HEIGHT;
@@ -30,6 +30,21 @@ export class Generator {
 
   hasTree(x: number, z: number): boolean {
     return hash2(x, z, this.seed ^ 0x51ab3) < 0.007;
+  }
+
+  /** 石头层中按深度概率撒矿石(确定性,越深越稀有的矿越多) */
+  oreAt(x: number, y: number, z: number): number {
+    const r = hash3(x, y, z, this.seed ^ 0x0135a);
+    if (y <= 14 && r < 0.0022) return Block.DiamondOre;
+    if (y <= 22 && r < 0.0058) return Block.GoldOre;
+    if (y <= 42 && r < 0.014) return Block.IronOre;
+    if (r < 0.026) return Block.CoalOre;
+    return Block.Stone;
+  }
+
+  /** 草地上稀有的野生南瓜 */
+  hasPumpkin(x: number, z: number): boolean {
+    return hash2(x, z, this.seed ^ 0x7a111) < 0.0016;
   }
 
   private treeHeight(x: number, z: number): number {
@@ -64,13 +79,17 @@ export class Generator {
         for (let y = 0; y <= h; y++) {
           let id: number;
           if (y === 0) id = Block.Bedrock;
-          else if (y < h - 3) id = Block.Stone;
+          else if (y < h - 3) id = this.oreAt(wx, y, wz);
           else if (y < h) id = sandy ? Block.Sand : Block.Dirt;
           else id = sandy ? Block.Sand : snowy ? Block.Snow : Block.Grass;
           data[idx(lx, y, lz)] = id;
         }
         for (let y = h + 1; y <= SEA_LEVEL; y++) {
           data[idx(lx, y, lz)] = Block.Water;
+        }
+        // 草地上的野生南瓜(避开树)
+        if (!sandy && !snowy && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && this.hasPumpkin(wx, wz)) {
+          data[idx(lx, h + 1, lz)] = Block.Pumpkin;
         }
       }
     }
@@ -123,6 +142,7 @@ export class Generator {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
           const h = this.heightAt(dx, dz);
           if (h <= SEA_LEVEL + 1 || h >= SNOW_LEVEL) continue;
+          if (this.hasPumpkin(dx, dz)) continue; // 别出生在南瓜里
           let clear = true;
           // 周围 6 格内不能有树(树冠半径 2,留出起步活动空间)
           for (let tx = -6; tx <= 6 && clear; tx++) {

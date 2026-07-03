@@ -10,16 +10,20 @@ export class Input {
   onMouseUp: (button: number) => void = () => {};
   onWheel: (dir: number) => void = () => {};
   onSelectSlot: (index: number) => void = () => {};
+  onKey: (code: string) => void = () => {};
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     document.addEventListener('keydown', (e) => {
       if (this.locked && (e.code === 'Space' || e.code.startsWith('Arrow'))) {
         e.preventDefault();
       }
+      const fresh = !this.keys.has(e.code);
       this.keys.add(e.code);
+      if (fresh) this.onKey(e.code);
       if (e.code.startsWith('Digit')) {
         const n = Number(e.code.slice(5));
         if (n >= 1 && n <= 9) this.onSelectSlot(n - 1);
+        else if (n === 0) this.onSelectSlot(9); // 第 10 格
       }
     });
     document.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -54,11 +58,11 @@ export class Input {
     );
   }
 
-  requestLock(): void {
+  requestLock(onReject?: () => void): void {
     const ret = this.canvas.requestPointerLock() as unknown;
     if (ret && typeof (ret as Promise<void>).catch === 'function') {
-      // Chrome 在快速重复锁定时会以 SecurityError 拒绝,忽略即可
-      (ret as Promise<void>).catch(() => {});
+      // Chrome 在 Esc 解锁后约 1.25 秒内重新锁定会被拒绝
+      (ret as Promise<void>).catch(() => onReject?.());
     }
   }
 

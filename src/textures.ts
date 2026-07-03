@@ -176,6 +176,42 @@ const painters: Record<number, Painter> = {
       if (rng() < 0.5) px(img, x, 4, 240, 246, 250);
     }
   },
+  [Tile.TntSide]: (img, rng) => {
+    noiseFill(img, rng, [200, 46, 32], 10);
+    // 中部白带
+    for (let y = 5; y <= 10; y++) {
+      for (let x = 0; x < TS; x++) {
+        const v = (rng() * 2 - 1) * 6;
+        px(img, x, y, clamp255(226 + v), clamp255(222 + v), clamp255(208 + v));
+      }
+    }
+    // 像素字 "TNT"(T 为 3 宽,N 为 4 宽带斜线)
+    const glyphT = [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2], [1, 3]];
+    const glyphN = [
+      [0, 0], [0, 1], [0, 2], [0, 3],
+      [1, 1], [2, 2],
+      [3, 0], [3, 1], [3, 2], [3, 3],
+    ];
+    const draw = (glyph: number[][], ox: number) => {
+      for (const [gx, gy] of glyph) px(img, ox + gx, 6 + gy, 36, 28, 26);
+    };
+    draw(glyphT, 2);
+    draw(glyphN, 6);
+    draw(glyphT, 11);
+  },
+  [Tile.TntTop]: (img, rng) => {
+    noiseFill(img, rng, [196, 60, 40], 10);
+    // 中心引信块
+    for (let y = 5; y <= 10; y++) {
+      for (let x = 5; x <= 10; x++) {
+        const v = (rng() * 2 - 1) * 8;
+        px(img, x, y, clamp255(120 + v), clamp255(34 + v), clamp255(24 + v));
+      }
+    }
+  },
+  [Tile.TntBottom]: (img, rng) => {
+    noiseFill(img, rng, [130, 32, 24], 12);
+  },
   [Tile.Glass]: (img, rng) => {
     for (let y = 0; y < TS; y++) {
       for (let x = 0; x < TS; x++) {
@@ -195,7 +231,128 @@ const painters: Record<number, Painter> = {
     }
     void rng;
   },
+  [Tile.Sandstone]: (img, rng) => {
+    // 水平层理的砂岩
+    for (let y = 0; y < TS; y++) {
+      const band = Math.floor(y / 4) % 2 === 0 ? 0 : -14;
+      for (let x = 0; x < TS; x++) {
+        const v = (rng() * 2 - 1) * 7;
+        px(img, x, y, clamp255(216 + band + v), clamp255(202 + band + v), clamp255(152 + band + v));
+      }
+    }
+    for (let x = 0; x < TS; x++) {
+      if (rng() < 0.4) px(img, x, 0, 188, 174, 128);
+      if (rng() < 0.4) px(img, x, TS - 1, 188, 174, 128);
+    }
+  },
+  [Tile.Brick]: (img, rng) => {
+    // 红砖 + 灰浆缝(4 行砖,错缝)
+    for (let y = 0; y < TS; y++) {
+      const row = y >> 2;
+      const mortarRow = y % 4 === 3;
+      for (let x = 0; x < TS; x++) {
+        const seam = row % 2 === 0 ? (x + 4) % 8 === 7 : x % 8 === 7;
+        const v = (rng() * 2 - 1) * 9;
+        if (mortarRow || seam) {
+          px(img, x, y, clamp255(172 + v), clamp255(166 + v), clamp255(158 + v));
+        } else {
+          px(img, x, y, clamp255(150 + v), clamp255(62 + v), clamp255(48 + v));
+        }
+      }
+    }
+  },
+  [Tile.StoneBrick]: (img, rng) => {
+    // 2×2 大块石砖,深色凹缝
+    for (let y = 0; y < TS; y++) {
+      for (let x = 0; x < TS; x++) {
+        const seam = x % 8 === 7 || y % 8 === 7 || x === 0 || y === 0;
+        const v = (rng() * 2 - 1) * 7;
+        const g = seam ? 84 : 128;
+        px(img, x, y, clamp255(g + v), clamp255(g + v), clamp255(g + v));
+      }
+    }
+  },
+  [Tile.CoalOre]: (img, rng) => oreTexture(img, rng, [40, 40, 44]),
+  [Tile.IronOre]: (img, rng) => oreTexture(img, rng, [214, 166, 130]),
+  [Tile.GoldOre]: (img, rng) => oreTexture(img, rng, [250, 206, 60]),
+  [Tile.DiamondOre]: (img, rng) => oreTexture(img, rng, [92, 219, 213]),
+  [Tile.Obsidian]: (img, rng) => {
+    noiseFill(img, rng, [28, 22, 40], 9);
+    for (let i = 0; i < 7; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 74, 56, 112);
+    }
+    for (let i = 0; i < 3; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 108, 92, 150);
+    }
+  },
+  [Tile.PumpkinSide]: (img, rng) => pumpkinBase(img, rng),
+  [Tile.PumpkinTop]: (img, rng) => {
+    noiseFill(img, rng, [196, 116, 30], 10);
+    // 外圈压暗 + 中心果梗
+    for (let i = 0; i < TS; i++) {
+      px(img, i, 0, 168, 96, 22);
+      px(img, i, TS - 1, 168, 96, 22);
+      px(img, 0, i, 168, 96, 22);
+      px(img, TS - 1, i, 168, 96, 22);
+    }
+    for (let y = 6; y <= 9; y++) {
+      for (let x = 6; x <= 9; x++) {
+        px(img, x, y, 96, 74, 38);
+      }
+    }
+  },
+  [Tile.PumpkinFace]: (img, rng) => {
+    pumpkinBase(img, rng);
+    const dark = (x: number, y: number) => px(img, x, y, 34, 20, 8);
+    // 三角眼
+    for (const ox of [3, 9]) {
+      dark(ox + 1, 4);
+      dark(ox, 5);
+      dark(ox + 1, 5);
+      dark(ox + 2, 5);
+    }
+    // 锯齿嘴
+    for (let x = 3; x <= 12; x++) dark(x, 10);
+    dark(4, 9);
+    dark(7, 9);
+    dark(8, 9);
+    dark(11, 9);
+    dark(5, 11);
+    dark(6, 11);
+    dark(9, 11);
+    dark(10, 11);
+  },
 };
+
+/** 石底 + 矿物斑块 */
+function oreTexture(img: ImageData, rng: () => number, ore: [number, number, number]): void {
+  painters[Tile.Stone](img, rng);
+  for (let i = 0; i < 5; i++) {
+    const cx = 1 + ((rng() * (TS - 3)) | 0);
+    const cy = 1 + ((rng() * (TS - 3)) | 0);
+    for (let dy = 0; dy < 2; dy++) {
+      for (let dx = 0; dx < 2; dx++) {
+        if (rng() < 0.82) {
+          const v = (rng() * 2 - 1) * 16;
+          px(img, cx + dx, cy + dy, clamp255(ore[0] + v), clamp255(ore[1] + v), clamp255(ore[2] + v));
+        }
+      }
+    }
+  }
+}
+
+/** 南瓜侧面基底:竖向棱纹 */
+function pumpkinBase(img: ImageData, rng: () => number): void {
+  for (let x = 0; x < TS; x++) {
+    const rib = x % 4 === 0;
+    for (let y = 0; y < TS; y++) {
+      const v = (rng() * 2 - 1) * 8;
+      const base: [number, number, number] = rib ? [182, 102, 24] : [214, 126, 32];
+      const edge = y === 0 || y === TS - 1 ? -22 : 0;
+      px(img, x, y, clamp255(base[0] + v + edge), clamp255(base[1] + v + edge), clamp255(base[2] + v + edge));
+    }
+  }
+}
 
 export interface GameTextures {
   atlas: THREE.CanvasTexture;
@@ -265,47 +422,293 @@ export function buildTextures(): GameTextures {
   return { atlas, atlasCanvas: canvas, iconFor };
 }
 
-/** 云层纹理:阈值化噪声生成的白色斑块 */
-export function buildCloudTexture(): THREE.CanvasTexture {
+/** 独立的水面贴图(与图集分离,便于做 UV 漂移动画) */
+export function buildWaterTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = TS;
+  canvas.height = TS;
+  const ctx = canvas.getContext('2d')!;
+  const img = ctx.createImageData(TS, TS);
+  painters[Tile.Water](img, mulberry32(Tile.Water * 7919 + 17));
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/** 挖掘裂纹贴图,共 5 个阶段,透明背景叠加在方块表面 */
+export function buildCrackTextures(): THREE.CanvasTexture[] {
+  const stages: THREE.CanvasTexture[] = [];
+  for (let stage = 0; stage < 5; stage++) {
+    const canvas = document.createElement('canvas');
+    canvas.width = TS;
+    canvas.height = TS;
+    const ctx = canvas.getContext('2d')!;
+    const img = ctx.createImageData(TS, TS);
+    const rng = mulberry32(900 + stage * 31);
+
+    // 从中心向外辐射的折线裂纹,阶段越高线越多越长
+    const cracks = 3 + stage * 2;
+    for (let i = 0; i < cracks; i++) {
+      let x = 5 + rng() * 6;
+      let y = 5 + rng() * 6;
+      const angle = rng() * Math.PI * 2;
+      let dx = Math.cos(angle);
+      let dy = Math.sin(angle);
+      const len = 4 + stage * 2.4 + rng() * 3;
+      for (let s = 0; s < len; s++) {
+        const xi = Math.round(x);
+        const yi = Math.round(y);
+        if (xi >= 0 && xi < TS && yi >= 0 && yi < TS) {
+          const a = 150 + rng() * 80;
+          px(img, xi, yi, 18, 14, 12, a);
+        }
+        x += dx;
+        y += dy;
+        // 折一下
+        if (rng() < 0.35) {
+          const turn = (rng() - 0.5) * 1.4;
+          const nx2 = dx * Math.cos(turn) - dy * Math.sin(turn);
+          dy = dx * Math.sin(turn) + dy * Math.cos(turn);
+          dx = nx2;
+        }
+      }
+    }
+    // 高阶段补一些碎屑点
+    for (let i = 0; i < stage * 5; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 18, 14, 12, 140);
+    }
+
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    stages.push(tex);
+  }
+  return stages;
+}
+
+/** 云层纹理:双尺度值噪声 + 软边阈值,可平铺 */
+export function buildCloudTexture(seed = 424242): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const img = ctx.createImageData(size, size);
-  const rng = mulberry32(424242);
-  // 简单分形:几层方块状随机叠加后阈值化
-  const grid = 8;
-  const cells: number[] = [];
-  for (let i = 0; i < grid * grid; i++) cells.push(rng());
-  const cellAt = (cxx: number, cyy: number) =>
-    cells[((cyy + grid) % grid) * grid + ((cxx + grid) % grid)];
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const gx = (x / size) * grid;
-      const gy = (y / size) * grid;
+  const rng = mulberry32(seed);
+
+  // 环面值噪声采样器(保证平铺无缝)
+  const makeLayer = (grid: number) => {
+    const cells: number[] = [];
+    for (let i = 0; i < grid * grid; i++) cells.push(rng());
+    return (u: number, v: number) => {
+      const gx = u * grid;
+      const gy = v * grid;
       const ix = Math.floor(gx);
       const iy = Math.floor(gy);
       const fx = gx - ix;
       const fy = gy - iy;
       const sx = fx * fx * (3 - 2 * fx);
       const sy = fy * fy * (3 - 2 * fy);
-      const a = cellAt(ix, iy);
-      const b = cellAt(ix + 1, iy);
-      const c = cellAt(ix, iy + 1);
-      const d = cellAt(ix + 1, iy + 1);
-      const v = a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+      const at = (xx: number, yy: number) =>
+        cells[((yy + grid) % grid) * grid + ((xx + grid) % grid)];
+      const a = at(ix, iy);
+      const b = at(ix + 1, iy);
+      const c = at(ix, iy + 1);
+      const d = at(ix + 1, iy + 1);
+      return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+    };
+  };
+  const coarse = makeLayer(5);
+  const fine = makeLayer(13);
+  const smooth = (e0: number, e1: number, v: number) => {
+    const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const v = y / size;
+      const n = coarse(u, v) * 0.72 + fine(u, v) * 0.28;
+      const a = smooth(0.55, 0.7, n) * 225;
       const i4 = (y * size + x) * 4;
       img.data[i4] = 255;
       img.data[i4 + 1] = 255;
       img.data[i4 + 2] = 255;
-      img.data[i4 + 3] = v > 0.62 ? 215 : 0;
+      img.data[i4 + 3] = a;
     }
   }
   ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
+/** MC 风格柔边方形太阳 */
+export function buildSunTexture(): THREE.CanvasTexture {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.filter = 'blur(5px)';
+  ctx.fillStyle = 'rgba(255, 244, 200, 0.9)';
+  ctx.fillRect(14, 14, 36, 36);
+  ctx.filter = 'blur(1.5px)';
+  ctx.fillStyle = '#fffdf2';
+  ctx.fillRect(21, 21, 22, 22);
+  ctx.filter = 'none';
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
+/** 生物皮肤:身体 / 头 / 脸三张贴图 */
+export interface MobSkin {
+  body: THREE.CanvasTexture;
+  head: THREE.CanvasTexture;
+  face: THREE.CanvasTexture;
+}
+
+/** 猪/羊/鸡的程序化皮肤(盒子模型用) */
+export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: MobSkin } {
+  const make = (paint: Painter, seed: number): THREE.CanvasTexture => {
+    const canvas = document.createElement('canvas');
+    canvas.width = TS;
+    canvas.height = TS;
+    const ctx = canvas.getContext('2d')!;
+    const img = ctx.createImageData(TS, TS);
+    paint(img, mulberry32(seed));
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  };
+  const eyes = (img: ImageData, y = 5) => {
+    for (const ox of [2, 11]) {
+      px(img, ox, y, 246, 246, 246);
+      px(img, ox, y + 1, 246, 246, 246);
+      px(img, ox + 1, y, 24, 18, 22);
+      px(img, ox + 1, y + 1, 24, 18, 22);
+    }
+  };
+
+  // 猪:粉皮 + 猪鼻
+  const pigSkin: Painter = (img, rng) => {
+    noiseFill(img, rng, [236, 158, 148], 8);
+    for (let i = 0; i < 6; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 216, 134, 126);
+    }
+  };
+  const pigBody = make(pigSkin, 555001);
+  const pigFace = make((img, rng) => {
+    pigSkin(img, rng);
+    eyes(img);
+    for (let y = 8; y <= 11; y++) {
+      for (let x = 5; x <= 10; x++) {
+        px(img, x, y, 224, 120, 132);
+      }
+    }
+    px(img, 6, 9, 134, 62, 72);
+    px(img, 6, 10, 134, 62, 72);
+    px(img, 9, 9, 134, 62, 72);
+    px(img, 9, 10, 134, 62, 72);
+  }, 555002);
+
+  // 羊:奶白卷毛 + 浅褐脸
+  const wool: Painter = (img, rng) => {
+    noiseFill(img, rng, [233, 231, 224], 6);
+    for (let i = 0; i < 14; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 210, 207, 197);
+    }
+  };
+  const sheepHide: Painter = (img, rng) => {
+    noiseFill(img, rng, [224, 200, 178], 8);
+  };
+  const sheepBody = make(wool, 556001);
+  const sheepHead = make(sheepHide, 556002);
+  const sheepFace = make((img, rng) => {
+    sheepHide(img, rng);
+    // 额头一撮羊毛
+    for (let y = 0; y <= 2; y++) {
+      for (let x = 3; x <= 12; x++) {
+        const v = (rng() * 2 - 1) * 6;
+        px(img, x, y, clamp255(233 + v), clamp255(231 + v), clamp255(224 + v));
+      }
+    }
+    eyes(img, 6);
+    // 粉鼻头
+    px(img, 7, 11, 214, 150, 148);
+    px(img, 8, 11, 214, 150, 148);
+    px(img, 7, 12, 190, 124, 122);
+    px(img, 8, 12, 190, 124, 122);
+  }, 556003);
+
+  // 鸡:白羽 + 黄喙红肉髯
+  const feather: Painter = (img, rng) => {
+    noiseFill(img, rng, [245, 243, 238], 5);
+    for (let i = 0; i < 8; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 224, 221, 214);
+    }
+  };
+  const chickenBody = make(feather, 557001);
+  const chickenFace = make((img, rng) => {
+    feather(img, rng);
+    eyes(img, 4);
+    // 黄喙
+    for (let y = 8; y <= 10; y++) {
+      for (let x = 6; x <= 9; x++) {
+        px(img, x, y, 238, 182, 38);
+      }
+    }
+    // 红肉髯
+    px(img, 7, 11, 196, 44, 38);
+    px(img, 8, 11, 196, 44, 38);
+    px(img, 7, 12, 172, 34, 30);
+    px(img, 8, 12, 172, 34, 30);
+  }, 557002);
+
+  return {
+    pig: { body: pigBody, head: pigBody, face: pigFace },
+    sheep: { body: sheepBody, head: sheepHead, face: sheepFace },
+    chicken: { body: chickenBody, head: chickenBody, face: chickenFace },
+  };
+}
+
+/** 柔边方形月亮:冷白色调,带几块月海暗斑 */
+export function buildMoonTexture(): THREE.CanvasTexture {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.filter = 'blur(4px)';
+  ctx.fillStyle = 'rgba(190, 204, 232, 0.75)';
+  ctx.fillRect(18, 18, 28, 28);
+  ctx.filter = 'blur(1px)';
+  ctx.fillStyle = '#e6edfc';
+  ctx.fillRect(23, 23, 18, 18);
+  ctx.filter = 'blur(1.5px)';
+  ctx.fillStyle = 'rgba(140, 156, 194, 0.8)';
+  ctx.fillRect(26, 27, 7, 5);
+  ctx.fillRect(34, 33, 5, 5);
+  ctx.fillRect(27, 35, 4, 3);
+  ctx.filter = 'none';
+  const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.LinearFilter;
   return tex;
 }
