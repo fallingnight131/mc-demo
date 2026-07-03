@@ -13,6 +13,7 @@ import { Player } from './player';
 import { Sky, SKY_HORIZON } from './sky';
 import { Sound } from './sound';
 import { buildCrackTextures, buildTextures, buildWaterTexture } from './textures';
+import { isTouchDevice, TouchControls } from './touch';
 import { World, type EditData, type RayHit } from './world';
 
 const SKY_COLOR = SKY_HORIZON;
@@ -324,10 +325,33 @@ function refreshHotbar(): void {
 refreshHotbar();
 
 const input = new Input(renderer.domElement);
+
+// --- 触屏设备:虚拟摇杆 + 视角拖动 + 跳/挖/放/暂停/背包按钮 ---
+const touch = isTouchDevice() ? new TouchControls() : null;
+if (touch) {
+  document.body.appendChild(touch.root);
+  touch.onPause = () => input.forceUnlock();
+  touch.onInventory = () => {
+    if (inventoryOpen) closeInventory(true);
+    else if (input.locked) openInventory();
+  };
+  document.getElementById('touch-help')!.style.display = 'list-item';
+}
+
+/** 进入游戏:触屏没有指针锁定,直接软锁 */
+function engage(): void {
+  if (touch) input.forceLock();
+  else input.requestLock(() => hud.setOverlayHint('指针锁定被浏览器拒绝,请稍候约 1 秒再点击'));
+}
+
 const overlayEl = document.getElementById('overlay')!;
-overlayEl.addEventListener('click', () =>
-  input.requestLock(() => hud.setOverlayHint('指针锁定被浏览器拒绝,请稍候约 1 秒再点击')),
-);
+overlayEl.addEventListener('click', () => engage());
+
+// 触屏点击物品栏槽位直接选中
+hud.onSlotTap = (i) => {
+  selectedSlot = i;
+  hud.setSelected(i);
+};
 
 // 清档重开。此前只摘掉了 beforeunload,但 reload 时页面转为 hidden 会触发
 // visibilitychange → saveGame 把旧状态(比如卡在地底的玩家)原样写回,
@@ -385,7 +409,7 @@ function closeInventory(relock: boolean): void {
   inventoryOpen = false;
   hud.setInventoryVisible(false);
   if (relock && !input.locked) {
-    input.requestLock(() => hud.setOverlayHint('指针锁定被浏览器拒绝,请稍候约 1 秒再点击'));
+    engage();
   } else if (!relock) {
     hud.setOverlayVisible(!input.locked, started);
   }
@@ -400,9 +424,7 @@ hud.buildInventory(PLACEABLE.map(slotFor), (id) => {
 
 // 兜底:游戏中途失锁且无遮罩时,点画布重新锁定
 renderer.domElement.addEventListener('click', () => {
-  if (!input.locked && !inventoryOpen && started) {
-    input.requestLock(() => hud.setOverlayHint('指针锁定被浏览器拒绝,请稍候约 1 秒再点击'));
-  }
+  if (!input.locked && !inventoryOpen && started) engage();
 });
 
 // --- 方块交互 ---
@@ -587,15 +609,24 @@ function frame(now: number): void {
 
   if (input.locked) {
     const look = input.consumeLook();
-    player.yaw -= look.dx * MOUSE_SENS;
-    player.pitch -= look.dy * MOUSE_SENS;
+    let lookDx = look.dx;
+    let lookDy = look.dy;
+    if (touch) {
+      const tl = touch.consumeLook();
+      lookDx += tl.dx;
+      lookDy += tl.dy;
+    }
+    player.yaw -= lookDx * MOUSE_SENS;
+    player.pitch -= lookDy * MOUSE_SENS;
     const maxPitch = Math.PI / 2 - 0.001;
     player.pitch = Math.max(-maxPitch, Math.min(maxPitch, player.pitch));
 
     player.update(dt, {
-      forward: (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0),
-      strafe: (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0),
-      jump: input.isDown('Space'),
+      forward:
+        (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0) + (touch?.moveVec.y ?? 0),
+      strafe:
+        (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0) + (touch?.moveVec.x ?? 0),
+      jump: input.isDown('Space') || (touch?.jumpHeld ?? false),
       sprint: input.isDown('ShiftLeft') || input.isDown('ShiftRight'),
     });
 
@@ -606,6 +637,7 @@ function frame(now: number): void {
     }
   } else {
     input.consumeLook();
+    touch?.consumeLook();
   }
 
   // 世界推进(暂停时冻结水流)
@@ -672,8 +704,9 @@ function frame(now: number): void {
   }
 
   if (input.locked) {
-    // 按住左键:挖掘进度,移开目标即重置
-    if (leftHeld && hit && BLOCK_DEFS[hit.id].hardness !== Infinity) {
+    // 按住左键(或触屏挖掘钮):挖掘进度,移开目标即重置
+    const digHeld = leftHeld || (touch?.mineHeld ?? false);
+    if (digHeld && hit && BLOCK_DEFS[hit.id].hardness !== Infinity) {
       if (!mining || mining.x !== hit.x || mining.y !== hit.y || mining.z !== hit.z) {
         mining = {
           x: hit.x,
@@ -699,8 +732,8 @@ function frame(now: number): void {
       mining = null;
     }
 
-    // 按住右键:连续放置(对准 TNT 则点燃)
-    if (rightHeld && now >= nextPlace) {
+    // 按住右键(或触屏放置钮):连续放置(对准 TNT 则点燃)
+    if ((rightHeld || (touch?.placeHeld ?? false)) && now >= nextPlace) {
       useAt(hit);
       hud.punchHand();
       nextPlace = now + 240;

@@ -658,6 +658,90 @@ await look(10, 0, 22);
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/7-vista.png` });
 
+// --- 触屏操控(独立移动端页面):UI 就位 / 摇杆行走 / 拖动视角 / 按钮跳跃与挖掘 ---
+const mob = await browser.newPage({
+  viewport: { width: 812, height: 375 },
+  hasTouch: true,
+  isMobile: true,
+});
+mob.on('console', (m) => m.type() === 'error' && errors.push('[触屏] ' + m.text()));
+mob.on('pageerror', (e) => errors.push('[触屏] ' + String(e)));
+await mob.goto('http://localhost:5173/?test', { waitUntil: 'load' });
+await mob.evaluate(() => localStorage.clear());
+await mob.reload({ waitUntil: 'load' });
+await mob.waitForSelector('canvas.game', { timeout: 15000 });
+await mob.waitForTimeout(2500);
+const touchUI = (await mob.$('#joy-base')) !== null;
+await mob.screenshot({ path: `${OUT}/12-touch-ui.png` });
+// 摇杆前推 1.3s
+const joyBox = await (await mob.$('#joy-base')).boundingBox();
+const jcx = joyBox.x + joyBox.width / 2;
+const jcy = joyBox.y + joyBox.height / 2;
+const tp0 = await mob.evaluate(() => {
+  const p = window.__game.player.pos;
+  return [p.x, p.z];
+});
+await mob.mouse.move(jcx, jcy);
+await mob.mouse.down();
+await mob.mouse.move(jcx, jcy - 45, { steps: 4 });
+await mob.waitForTimeout(1300);
+await mob.mouse.up();
+const tp1 = await mob.evaluate(() => {
+  const p = window.__game.player.pos;
+  return [p.x, p.z];
+});
+const tMoved = Math.hypot(tp1[0] - tp0[0], tp1[1] - tp0[1]);
+// 右侧拖动转视角
+const yaw0 = await mob.evaluate(() => window.__game.player.yaw);
+await mob.mouse.move(560, 140);
+await mob.mouse.down();
+await mob.mouse.move(660, 140, { steps: 8 });
+await mob.mouse.up();
+await mob.waitForTimeout(200);
+const yaw1 = await mob.evaluate(() => window.__game.player.yaw);
+// 跳跃按钮
+const jbBox = await (await mob.$('#btn-jump')).boundingBox();
+const ty0 = await mob.evaluate(() => window.__game.player.pos.y);
+await mob.mouse.move(jbBox.x + jbBox.width / 2, jbBox.y + jbBox.height / 2);
+await mob.mouse.down();
+await mob.waitForTimeout(170);
+const ty1 = await mob.evaluate(() => window.__game.player.pos.y);
+await mob.mouse.up();
+await mob.waitForTimeout(600);
+// 挖掘按钮:对齐所站方块、垂直俯视、长按挖掉脚下第一格
+await mob.evaluate(() => {
+  const g = window.__game;
+  const p = g.player;
+  const x = Math.floor(p.pos.x);
+  const z = Math.floor(p.pos.z);
+  let y = Math.floor(p.pos.y);
+  while (y > 1 && !g.world.isSolid(x, y - 1, z)) y--;
+  p.pos.set(x + 0.5, y + 0.01, z + 0.5);
+  p.vel.set(0, 0, 0);
+  p.pitch = -1.55;
+});
+await mob.waitForTimeout(150);
+const digTarget = await mob.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  return [Math.floor(p.x), Math.floor(p.y - 0.5), Math.floor(p.z)];
+});
+const mbBox = await (await mob.$('#btn-mine')).boundingBox();
+await mob.mouse.move(mbBox.x + mbBox.width / 2, mbBox.y + mbBox.height / 2);
+await mob.mouse.down();
+await mob.waitForTimeout(1100); // 草方块 0.45s,留足裕量
+await mob.mouse.up();
+const tDug = await mob.evaluate(
+  ([x, y, z]) => window.__game.world.getBlock(x, y, z) === 0,
+  digTarget,
+);
+await mob.close();
+check(
+  '触屏操控',
+  touchUI && tMoved > 2 && Math.abs(yaw1 - yaw0) > 0.15 && ty1 > ty0 + 0.3 && tDug,
+  `UI ${touchUI},摇杆移动 ${tMoved.toFixed(1)} 格,视角 Δ${Math.abs(yaw1 - yaw0).toFixed(2)},跳起 +${(ty1 - ty0).toFixed(2)} 格,挖掉脚下 ${tDug}`,
+);
+
 check('无控制台错误', errors.length === 0, errors.join(' | '));
 
 await browser.close();

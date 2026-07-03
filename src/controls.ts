@@ -66,10 +66,17 @@ export class Input {
     }
   }
 
-  /** 自动化测试钩子:无头浏览器不支持指针锁定,直接视为已锁定 */
+  /** 软锁定:触屏设备与自动化测试没有真实指针锁定,直接视为已锁定 */
   forceLock(): void {
     this.locked = true;
     this.onLockChange(true);
+  }
+
+  /** 软解锁:触屏的暂停按钮用,回到暂停遮罩 */
+  forceUnlock(): void {
+    this.locked = false;
+    this.keys.clear();
+    this.onLockChange(false);
   }
 
   isDown(code: string): boolean {

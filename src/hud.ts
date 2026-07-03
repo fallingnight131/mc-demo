@@ -16,6 +16,8 @@ function copyIcon(src: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 export class HUD {
+  /** 触屏点击槽位选中 */
+  onSlotTap: ((i: number) => void) | null = null;
   private readonly overlay = document.getElementById('overlay')!;
   private readonly overlayTitle = document.getElementById('overlay-title')!;
   private readonly overlayHint = document.getElementById('overlay-hint')!;
@@ -36,6 +38,7 @@ export class HUD {
     this.slotEls = slots.map((slot, i) => {
       const el = document.createElement('div');
       el.className = 'slot';
+      el.addEventListener('click', () => this.onSlotTap?.(i));
       el.appendChild(copyIcon(slot.icon));
       const key = document.createElement('span');
       key.className = 'slot-key';
