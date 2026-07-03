@@ -341,7 +341,6 @@ if (touch) {
     else if (input.locked) openInventory();
   };
   touch.onTap = (x, y) => tapInteract(x, y);
-  document.getElementById('touch-help')!.style.display = 'list-item';
 }
 
 /** 进入游戏:触屏没有指针锁定,直接软锁 */
@@ -383,7 +382,7 @@ input.onLockChange = (locked) => {
   hud.setOverlayVisible(!locked && !inventoryOpen, started);
   if (!locked) sound.setAmbience(0, 0); // 暂停时环境声淡出
   leftHeld = false;
-  rightHeld = false;
+  leftDownAt = 0;
   mining = null;
 };
 
@@ -427,6 +426,12 @@ hud.buildInventory(PLACEABLE.map(slotFor), (id) => {
   hud.toast(`${BLOCK_DEFS[id].name} → 槽位 ${(selectedSlot + 1) % 10}`);
   closeInventory(true);
 });
+
+// 背包的无键盘退出:点空白背景或右上角 ✕(手机端必需,桌面也顺手)
+document.getElementById('inventory')!.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).id === 'inventory') closeInventory(true);
+});
+document.getElementById('inv-close')!.addEventListener('click', () => closeInventory(true));
 
 // 兜底:游戏中途失锁且无遮罩时,点画布重新锁定
 renderer.domElement.addEventListener('click', () => {
@@ -497,8 +502,6 @@ interface MiningState {
 }
 let mining: MiningState | null = null;
 let leftHeld = false;
-let rightHeld = false;
-let nextPlace = 0;
 // 左键点按(<TAP_MS 松开)= 放置,长按 = 挖掘;挖掉方块或打中生物则不再算点按
 const TAP_MS = 230;
 let leftDownAt = 0;
@@ -560,11 +563,6 @@ input.onMouseDown = (button) => {
         leftDownAt = 0;
       }
     }
-  } else if (button === 2) {
-    rightHeld = true;
-    useAt(aimHit());
-    nextPlace = performance.now() + 240;
-    hud.punchHand();
   } else if (button === 1) {
     pickAt(aimHit());
   }
@@ -579,8 +577,6 @@ input.onMouseUp = (button) => {
     leftDownAt = 0;
     leftHeld = false;
     mining = null;
-  } else if (button === 2) {
-    rightHeld = false;
   }
 };
 
@@ -611,10 +607,6 @@ input.onKey = (code) => {
       // 忽略
     }
     hud.toast(m ? '音效:关' : '音效:开');
-  } else if (code === 'KeyT') {
-    // 时间快进 1/8 天,方便看日落与夜晚
-    timeOfDay = (timeOfDay + 0.125) % 1;
-    hud.toast(`时间快进 → ${clockText(timeOfDay)}`);
   } else if (code === 'KeyE') {
     if (inventoryOpen) closeInventory(true);
     else if (input.locked) openInventory();
@@ -670,7 +662,8 @@ function frame(now: number): void {
       strafe:
         (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0) + (touch?.moveVec.x ?? 0),
       jump: input.isDown('Space') || (touch?.jumpHeld ?? false),
-      sprint: input.isDown('ShiftLeft') || input.isDown('ShiftRight'),
+      sprint:
+        input.isDown('ShiftLeft') || input.isDown('ShiftRight') || (touch?.sprintHeld ?? false),
     });
 
     // 兜底:跌出世界则传回出生点
@@ -686,8 +679,11 @@ function frame(now: number): void {
   // 世界推进(暂停时冻结水流)
   world.update(player.pos.x, player.pos.z, input.locked ? dt : 0);
 
-  // 昼夜推进(暂停时冻结),把亮度应用到所有方块材质
-  if (input.locked) timeOfDay = (timeOfDay + dt / DAY_LENGTH) % 1;
+  // 昼夜推进(暂停时冻结);按住 T 或触屏时钟按钮时间快流
+  const timeFast = input.isDown('KeyT') || (touch?.timeHeld ?? false);
+  if (input.locked) {
+    timeOfDay = (timeOfDay + (dt * (timeFast ? 50 : 1)) / DAY_LENGTH) % 1;
+  }
   const dn = computeDayNight(timeOfDay);
   worldBrightness = dn.brightness;
   solidMat.color.setScalar(dn.brightness);
@@ -750,7 +746,7 @@ function frame(now: number): void {
     // 长按左键/触屏长按/挖掘钮:挖掘进度,移开目标即重置。
     // 触屏长按的目标是指尖所指方块(基岩版手势),其余用准星。
     let digHit = hit;
-    let digActive = leftHeld || (touch?.mineHeld ?? false);
+    let digActive = leftHeld;
     if (touch?.mineActive) {
       digHit = world.raycast(
         eyeVec.copy(camera.position),
@@ -784,13 +780,6 @@ function frame(now: number): void {
       }
     } else {
       mining = null;
-    }
-
-    // 按住右键(或触屏放置钮):连续放置(对准 TNT 则点燃)
-    if ((rightHeld || (touch?.placeHeld ?? false)) && now >= nextPlace) {
-      useAt(hit);
-      hud.punchHand();
-      nextPlace = now + 240;
     }
 
     updateTnt(dt);
@@ -866,7 +855,7 @@ function frame(now: number): void {
 
   // 疾跑视野拉伸
   const sprinting =
-    (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) &&
+    (input.isDown('ShiftLeft') || input.isDown('ShiftRight') || (touch?.sprintHeld ?? false)) &&
     Math.hypot(player.vel.x, player.vel.z) > 5;
   const targetFov = sprinting ? 82 : 75;
   if (Math.abs(camera.fov - targetFov) > 0.05) {
@@ -893,7 +882,7 @@ function frame(now: number): void {
   hud.setDebug(
     `FPS ${fpsValue}\n` +
       `XYZ ${player.pos.x.toFixed(1)} / ${player.pos.y.toFixed(1)} / ${player.pos.z.toFixed(1)}\n` +
-      `时间 ${clockText(timeOfDay)}(T 快进)`,
+      `时间 ${clockText(timeOfDay)}${touch ? '' : '(按住 T 加速)'}`,
   );
 
   renderer.render(scene, camera);

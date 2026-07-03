@@ -22,8 +22,9 @@ export class TouchControls {
   /** 摇杆移动向量:x 右 / y 前,-1..1 */
   readonly moveVec = { x: 0, y: 0 };
   jumpHeld = false;
-  mineHeld = false;
-  placeHeld = false;
+  sprintHeld = false;
+  /** 按住时钟按钮:时间快进 */
+  timeHeld = false;
   /** 长按挖掘手势进行中(挖掘目标 = 指尖所指方块) */
   mineActive = false;
   mineX = 0;
@@ -50,24 +51,33 @@ export class TouchControls {
     this.root = document.createElement('div');
     this.root.id = 'touch-ui';
 
-    const el = (id: string, cls: string, text = '', parent: HTMLElement = this.root) => {
+    const el = (id: string, cls: string, parent: HTMLElement = this.root) => {
       const d = document.createElement('div');
       d.id = id;
       if (cls) d.className = cls;
-      d.textContent = text;
       parent.appendChild(d);
       return d;
     };
+    // 按钮一律用内联 SVG 图标(手机端没有键盘,不用文字/按键指代)
+    const svg = (paths: string) =>
+      `<svg viewBox="0 0 24 24" width="58%" height="58%" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 
     // 视角层先加(在下),按钮后加(在上)
     const look = el('touch-look', '');
     this.base = el('joy-base', '');
-    this.knob = el('joy-knob', '', '', this.base);
-    const jump = el('btn-jump', 'touch-btn', '跳');
-    const mine = el('btn-mine', 'touch-btn', '挖');
-    const place = el('btn-place', 'touch-btn', '放');
-    const pause = el('btn-pause', 'touch-btn', 'Ⅱ');
-    const inv = el('btn-inv', 'touch-btn', '包');
+    this.knob = el('joy-knob', '', this.base);
+    const jump = el('btn-jump', 'touch-btn');
+    jump.innerHTML = svg('<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>');
+    const sprint = el('btn-sprint', 'touch-btn');
+    sprint.innerHTML = svg('<path d="M5 6l6 6-6 6"/><path d="M13 6l6 6-6 6"/>');
+    const pause = el('btn-pause', 'touch-btn');
+    pause.innerHTML = svg('<path d="M9 5v14"/><path d="M15 5v14"/>');
+    const inv = el('btn-inv', 'touch-btn');
+    inv.innerHTML = svg(
+      '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/><path d="M4 13h16"/>',
+    );
+    const time = el('btn-time', 'touch-btn');
+    time.innerHTML = svg('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>');
 
     // --- 摇杆 ---
     const applyJoy = (e: PointerEvent) => {
@@ -175,8 +185,8 @@ export class TouchControls {
       btn.addEventListener('pointercancel', end);
     };
     hold(jump, (v) => (this.jumpHeld = v));
-    hold(mine, (v) => (this.mineHeld = v));
-    hold(place, (v) => (this.placeHeld = v));
+    hold(sprint, (v) => (this.sprintHeld = v));
+    hold(time, (v) => (this.timeHeld = v));
 
     // --- 点按类按钮 ---
     const tap = (btn: HTMLElement, fn: () => void) => {

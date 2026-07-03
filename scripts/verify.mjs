@@ -150,7 +150,7 @@ await page.waitForTimeout(120);
 const muted2 = await page.evaluate(() => window.__game.sound.muted);
 check('静音切换', muted1 === true && muted2 === false, `M → ${muted1},再按 → ${muted2}`);
 
-// --- 放置:跳跃垫块两次(圆石) ---
+// --- 放置:跳跃垫块两次(圆石,左键点按放置) ---
 await page.keyboard.press('Digit4');
 await page.waitForTimeout(120);
 for (let i = 0; i < 2; i++) {
@@ -158,9 +158,9 @@ for (let i = 0; i < 2; i++) {
   await page.waitForTimeout(120);
   await page.keyboard.up('Space');
   await page.waitForTimeout(160); // 接近跳跃顶点
-  await page.mouse.down({ button: 'right' });
+  await page.mouse.down();
   await page.waitForTimeout(60);
-  await page.mouse.up({ button: 'right' });
+  await page.mouse.up();
   await page.waitForTimeout(600); // 落稳
 }
 const pAfterPlace = await pos();
@@ -265,8 +265,9 @@ await page.evaluate(() => {
   g.player.pitch = -0.65;
 });
 await page.waitForTimeout(300);
-await page.mouse.down({ button: 'right' });
-await page.mouse.up({ button: 'right' });
+await page.mouse.down();
+await page.waitForTimeout(60);
+await page.mouse.up();
 await page.waitForTimeout(250);
 const brickPlaced = await page.evaluate(() => {
   const g = window.__game;
@@ -375,8 +376,9 @@ await page.evaluate(() => {
 await page.waitForTimeout(300);
 await page.keyboard.press('Digit0'); // 选中 TNT
 await page.waitForTimeout(150);
-await page.mouse.down({ button: 'right' }); // 放置
-await page.mouse.up({ button: 'right' });
+await page.mouse.down(); // 点按放置
+await page.waitForTimeout(60);
+await page.mouse.up();
 await page.waitForTimeout(200);
 const tntPos = await page.evaluate(() => {
   const g = window.__game;
@@ -395,8 +397,9 @@ const tntPos = await page.evaluate(() => {
 });
 if (tntPos) {
   const groundBefore = await blockAt(tntPos.x, tntPos.y - 1, tntPos.z);
-  await page.mouse.down({ button: 'right' }); // 点燃
-  await page.mouse.up({ button: 'right' });
+  await page.mouse.down(); // 点按点燃
+  await page.waitForTimeout(60);
+  await page.mouse.up();
   await page.waitForTimeout(700);
   const ignited = (await blockAt(tntPos.x, tntPos.y, tntPos.z)) === 0;
   await page.screenshot({ path: `${OUT}/5a-tnt-primed.png` });
@@ -445,8 +448,9 @@ await page.evaluate(() => {
   g.player.pitch = Math.atan((h + 1.5 - (py + 1.62)) / 4);
 });
 await page.waitForTimeout(250);
-await page.mouse.down({ button: 'right' }); // 点燃
-await page.mouse.up({ button: 'right' });
+await page.mouse.down(); // 点按点燃
+await page.waitForTimeout(60);
+await page.mouse.up();
 await page.waitForTimeout(3200); // 引信 2.2s + 爆炸落定
 const mobBlast = await page.evaluate(() => {
   const g = window.__game;
@@ -692,6 +696,21 @@ check(
 await page.evaluate(() => window.__game.setTime(0.25)); // 回到白天
 await page.waitForTimeout(250);
 
+// --- 长按 T:时间连续快进(替代原先的跳跃式) ---
+const tHold0 = await page.evaluate(() => window.__game.env().time);
+await page.keyboard.down('KeyT');
+await page.waitForTimeout(600);
+await page.keyboard.up('KeyT');
+const tHold1 = await page.evaluate(() => window.__game.env().time);
+const tHoldDelta = (((tHold1 - tHold0) % 1) + 1) % 1;
+check(
+  '长按 T 加速时间',
+  tHoldDelta > 0.04 && tHoldDelta < 0.2,
+  `按住 600ms 推进 ${tHoldDelta.toFixed(3)} 天(常速仅 ~0.001)`,
+);
+await page.evaluate(() => window.__game.setTime(0.25));
+await page.waitForTimeout(200);
+
 // --- 环顾远景 ---
 await look(0, -45, 30);
 await look(10, 0, 22);
@@ -748,34 +767,71 @@ await mob.waitForTimeout(170);
 const ty1 = await mob.evaluate(() => window.__game.player.pos.y);
 await mob.mouse.up();
 await mob.waitForTimeout(600);
-// 挖掘按钮:对齐所站方块、垂直俯视、长按挖掉脚下第一格
-await mob.evaluate(() => {
-  const g = window.__game;
-  const p = g.player;
-  const x = Math.floor(p.pos.x);
-  const z = Math.floor(p.pos.z);
-  let y = Math.floor(p.pos.y);
-  while (y > 1 && !g.world.isSolid(x, y - 1, z)) y--;
-  p.pos.set(x + 0.5, y + 0.01, z + 0.5);
-  p.vel.set(0, 0, 0);
-  p.pitch = -1.55;
-});
-await mob.waitForTimeout(150);
-const digTarget = await mob.evaluate(() => {
-  const g = window.__game;
-  const p = g.player.pos;
-  return [Math.floor(p.x), Math.floor(p.y - 0.5), Math.floor(p.z)];
-});
-const mbBox = await (await mob.$('#btn-mine')).boundingBox();
-await mob.mouse.move(mbBox.x + mbBox.width / 2, mbBox.y + mbBox.height / 2);
+// 冲刺按钮:按住时最大水平速度应显著高于步行(速度采样,不受地形阻挡影响)
+const runTrial = async (sprint) => {
+  // 先移动鼠标/按住按钮(mouse.move 的 movementX 会转动视角),再复位朝向
+  if (sprint) {
+    const sb = await (await mob.$('#btn-sprint')).boundingBox();
+    await mob.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+    await mob.mouse.down();
+  }
+  await mob.evaluate(() => {
+    const g = window.__game;
+    const s = g.spawn;
+    g.player.pos.set(s.x, s.y + 0.01, s.z);
+    g.player.vel.set(0, 0, 0);
+    g.player.yaw = 0;
+    g.player.pitch = 0;
+  });
+  await mob.waitForTimeout(150);
+  await mob.keyboard.down('KeyW');
+  let vmax = 0;
+  for (let i = 0; i < 7; i++) {
+    await mob.waitForTimeout(120);
+    const v = await mob.evaluate(() => {
+      const p = window.__game.player;
+      return Math.hypot(p.vel.x, p.vel.z);
+    });
+    vmax = Math.max(vmax, v);
+  }
+  await mob.keyboard.up('KeyW');
+  if (sprint) await mob.mouse.up();
+  return vmax;
+};
+const walkV = await runTrial(false);
+const sprintV = await runTrial(true);
+check(
+  '触屏冲刺按钮',
+  sprintV > walkV + 1.5 && sprintV > 5.5,
+  `步行峰值 ${walkV.toFixed(1)} m/s → 冲刺峰值 ${sprintV.toFixed(1)} m/s`,
+);
+
+// 背包按钮开合(修复:此前背包打开后盖住按钮无法退出)+ 时钟按钮加速时间
+await mob.click('#btn-inv');
+await mob.waitForTimeout(250);
+const mInvOpen = await mob.evaluate(() =>
+  document.getElementById('inventory').classList.contains('open'),
+);
+await mob.mouse.click(30, 200); // 点背包空白背景处关闭
+await mob.waitForTimeout(250);
+const mInvClosed = await mob.evaluate(
+  () => !document.getElementById('inventory').classList.contains('open'),
+);
+const tc0 = await mob.evaluate(() => window.__game.env().time);
+const tb = await (await mob.$('#btn-time')).boundingBox();
+await mob.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
 await mob.mouse.down();
-await mob.waitForTimeout(1100); // 草方块 0.45s,留足裕量
+await mob.waitForTimeout(500);
 await mob.mouse.up();
-const tDug = await mob.evaluate(
-  ([x, y, z]) => window.__game.world.getBlock(x, y, z) === 0,
-  digTarget,
+const tc1 = await mob.evaluate(() => window.__game.env().time);
+const tcDelta = (((tc1 - tc0) % 1) + 1) % 1;
+check(
+  '触屏背包与时钟按钮',
+  mInvOpen && mInvClosed && tcDelta > 0.03,
+  `背包 开 ${mInvOpen} → 点空白关 ${mInvClosed},按住时钟 0.5s 推进 ${tcDelta.toFixed(3)} 天`,
 );
 // 手势:屏幕中心点按放置玻璃,再原地长按挖掉(基岩版交互)
+await mob.mouse.move(406, 187); // 先归位鼠标,避免后续 move 的视角增量
 await mob.evaluate(() => {
   const g = window.__game;
   g.mobs.setAutoSpawn(false);
@@ -830,8 +886,8 @@ check(
 await mob.close();
 check(
   '触屏操控',
-  touchUI && tMoved > 2 && Math.abs(yaw1 - yaw0) > 0.15 && ty1 > ty0 + 0.3 && tDug,
-  `UI ${touchUI},摇杆移动 ${tMoved.toFixed(1)} 格,视角 Δ${Math.abs(yaw1 - yaw0).toFixed(2)},跳起 +${(ty1 - ty0).toFixed(2)} 格,挖掉脚下 ${tDug}`,
+  touchUI && tMoved > 2 && Math.abs(yaw1 - yaw0) > 0.15 && ty1 > ty0 + 0.3,
+  `UI ${touchUI},摇杆移动 ${tMoved.toFixed(1)} 格,视角 Δ${Math.abs(yaw1 - yaw0).toFixed(2)},跳起 +${(ty1 - ty0).toFixed(2)} 格`,
 );
 
 check('无控制台错误', errors.length === 0, errors.join(' | '));

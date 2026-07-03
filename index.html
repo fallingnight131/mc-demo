@@ -87,17 +87,11 @@
         width: 68px;
         height: 68px;
       }
-      #btn-mine {
+      #btn-sprint {
         right: 112px;
-        bottom: 158px;
-        width: 60px;
-        height: 60px;
-      }
-      #btn-place {
-        right: 42px;
-        bottom: 202px;
-        width: 60px;
-        height: 60px;
+        bottom: 152px;
+        width: 58px;
+        height: 58px;
       }
       #btn-pause {
         top: 10px;
@@ -105,7 +99,6 @@
         width: 42px;
         height: 42px;
         border-radius: 10px;
-        font-size: 15px;
       }
       #btn-inv {
         top: 60px;
@@ -113,7 +106,27 @@
         width: 42px;
         height: 42px;
         border-radius: 10px;
-        font-size: 16px;
+      }
+      #btn-time {
+        top: 110px;
+        right: 12px;
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+      }
+      .touch-btn svg {
+        pointer-events: none;
+      }
+
+      /* 触屏设备:开始/暂停界面只显示触屏引导(无键盘) */
+      #help-touch {
+        display: none;
+      }
+      body.touch #help-desktop {
+        display: none;
+      }
+      body.touch #help-touch {
+        display: inline-block;
       }
 
       /* 触屏 + 竖屏:建议横屏的悬浮提示 */
@@ -297,11 +310,33 @@
         display: flex;
       }
       .inv-panel {
+        position: relative;
         background: rgba(0, 0, 0, 0.6);
         border: 1px solid rgba(255, 255, 255, 0.25);
         border-radius: 10px;
         padding: 16px 18px;
         max-width: min(640px, 92vw);
+        max-height: 88vh;
+        overflow-y: auto;
+      }
+      #inv-close {
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        cursor: pointer;
+      }
+      #inv-close:hover {
+        background: rgba(255, 255, 255, 0.2);
       }
       .inv-title {
         color: #d8e2f0;
@@ -411,6 +446,8 @@
         border-radius: 12px;
         padding: 32px 48px;
         max-width: 90vw;
+        max-height: 92vh;
+        overflow-y: auto;
       }
       .panel h1 {
         font-size: 36px;
@@ -481,23 +518,28 @@
       <div class="panel">
         <h1 id="overlay-title">MC Demo</h1>
         <div class="sub">Three.js 体素沙盒演示</div>
-        <ul>
+        <ul id="help-desktop">
           <li><kbd>W A S D</kbd>移动</li>
           <li><kbd>鼠标</kbd>视角</li>
           <li><kbd>左键</kbd>点按放置 · 长按挖掘</li>
-          <li><kbd>右键</kbd>放置方块(可按住连放)</li>
           <li><kbd>中键</kbd>选取方块</li>
           <li><kbd>滚轮 / 1-9 / 0</kbd>切换物品栏</li>
           <li><kbd>E</kbd>背包(更多方块)</li>
-          <li><kbd>右键 TNT</kbd>点燃(小心连锁)</li>
+          <li><kbd>点按 TNT</kbd>点燃(小心连锁)</li>
           <li><kbd>空格</kbd>跳跃 / 游泳</li>
           <li><kbd>Shift</kbd>疾跑</li>
           <li><kbd>M</kbd>静音切换</li>
-          <li><kbd>T</kbd>时间快进(看日落)</li>
+          <li><kbd>T</kbd>按住加速时间(看日落)</li>
           <li><kbd>Esc</kbd>暂停</li>
-          <li id="touch-help" style="display: none">
-            <kbd>触屏</kbd>左摇杆移动 · 点按放置 · 长按挖掘 · 拖动视角
-          </li>
+        </ul>
+        <ul id="help-touch">
+          <li><kbd>摇杆</kbd>移动(左下)</li>
+          <li><kbd>拖动</kbd>转视角</li>
+          <li><kbd>点按</kbd>放置方块 / 点燃 TNT / 打生物</li>
+          <li><kbd>长按</kbd>挖掘方块</li>
+          <li><kbd>↑ »</kbd>右下按钮:跳跃 / 疾跑</li>
+          <li><kbd>⏱</kbd>按住加速时间(看日落)</li>
+          <li><kbd>背包</kbd>右上按钮换方块,点物品栏切换</li>
         </ul>
         <div class="start">点击开始游戏</div>
         <div id="overlay-hint"></div>
@@ -508,7 +550,8 @@
     <div id="rotate-hint">🔄 建议横屏游玩</div>
     <div id="inventory">
       <div class="inv-panel">
-        <div class="inv-title">背包 — 点击方块放入当前手持槽位(E 或 Esc 关闭)</div>
+        <div id="inv-close">✕</div>
+        <div class="inv-title">背包 — 点方块放入当前手持槽位</div>
         <div id="inv-grid"></div>
       </div>
     </div>
