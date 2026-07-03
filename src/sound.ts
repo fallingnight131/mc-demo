@@ -4,7 +4,8 @@ import { Block } from './blocks';
 
 type Material = 'stone' | 'wood' | 'soft' | 'sand' | 'glass' | 'snow';
 
-function materialOf(blockId: number): Material {
+/** 方块的声学材质分类(镐子加速判定也复用"石类") */
+export function materialOf(blockId: number): Material {
   switch (blockId) {
     case Block.Stone:
     case Block.Cobble:
@@ -17,6 +18,9 @@ function materialOf(blockId: number): Material {
     case Block.GoldOre:
     case Block.DiamondOre:
     case Block.Obsidian:
+    case Block.IronBlock:
+    case Block.GoldBlock:
+    case Block.DiamondBlock:
       return 'stone';
     case Block.Log:
     case Block.Plank:
@@ -205,6 +209,17 @@ export class Sound {
   /** TNT 引信嘶声 */
   fuse(): void {
     this.noise({ duration: 0.35, filterType: 'highpass', freq: 3200, gain: 0.22 });
+  }
+
+  /** 打火石擦火 */
+  spark(): void {
+    this.knock(2400, 0.05, 0.22);
+    this.noise({ duration: 0.12, filterType: 'highpass', freq: 3800, gain: 0.3 });
+  }
+
+  /** 挥剑破风 */
+  swing(): void {
+    this.noise({ duration: 0.14, filterType: 'bandpass', freq: 1500, freqEnd: 500, q: 1.2, gain: 0.3 });
   }
 
   /** 爆炸(loud 按距离衰减 0..1) */

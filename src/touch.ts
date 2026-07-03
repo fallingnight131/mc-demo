@@ -69,7 +69,7 @@ export class TouchControls {
     const jump = el('btn-jump', 'touch-btn');
     jump.innerHTML = svg('<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>');
     const sprint = el('btn-sprint', 'touch-btn');
-    sprint.innerHTML = svg('<path d="M5 6l6 6-6 6"/><path d="M13 6l6 6-6 6"/>');
+    sprint.innerHTML = svg('<path d="M6 13l6-6 6 6"/><path d="M6 19l6-6 6 6"/>');
     const pause = el('btn-pause', 'touch-btn');
     pause.innerHTML = svg('<path d="M9 5v14"/><path d="M15 5v14"/>');
     const inv = el('btn-inv', 'touch-btn');

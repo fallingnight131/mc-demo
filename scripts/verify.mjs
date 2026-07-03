@@ -227,6 +227,69 @@ const tapPlaced = await page.evaluate(() => {
   return false;
 });
 check('左键点按放置', tapPlaced, `70ms 轻点后世界中出现玻璃 ${tapPlaced}`);
+
+// --- 镐子:挖石类 3 倍速(徒手 0.7s 挖不动石头,镐子 0.7s 挖掉) ---
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) - 5;
+  const z = Math.floor(s.z) + 6;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.65;
+});
+await page.keyboard.press('Digit3'); // 石头
+await page.waitForTimeout(200);
+await page.mouse.down(); // 点按放一块石头
+await page.waitForTimeout(60);
+await page.mouse.up();
+await page.waitForTimeout(250);
+const stoneAt = await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  for (let dy = 2; dy >= 0; dy--) {
+    for (let dx = -4; dx <= 4; dx++) {
+      for (let dz = -4; dz <= 4; dz++) {
+        const x = Math.floor(p.x) + dx;
+        const y = Math.floor(p.y) + dy;
+        const z = Math.floor(p.z) + dz;
+        if (g.world.getBlock(x, y, z) === 3) return { x, y, z };
+      }
+    }
+  }
+  return null;
+});
+let pickOk = false;
+if (stoneAt) {
+  await page.mouse.down(); // 徒手 0.7s(石头硬度 1.2s,应挖不动)
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const handIntact = (await blockAt(stoneAt.x, stoneAt.y, stoneAt.z)) === 3;
+  await page.keyboard.press('Digit7'); // 背包取镐子到槽位 7
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(250);
+  await page.click('#inv-grid .inv-slot[title="镐子"]');
+  await page.waitForTimeout(250);
+  // page.click 的鼠标移动会转动视角(软锁),重新对准石头
+  await page.evaluate(() => {
+    const g = window.__game;
+    g.player.yaw = 0;
+    g.player.pitch = -0.65;
+  });
+  await page.waitForTimeout(120);
+  await page.mouse.down(); // 镐子 0.7s(3 倍速 → 0.4s 即碎)
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const pickBroke = (await blockAt(stoneAt.x, stoneAt.y, stoneAt.z)) === 0;
+  pickOk = handIntact && pickBroke;
+  check('镐子挖石加速', pickOk, `徒手 0.7s 未挖动 ${handIntact},镐子 0.7s 挖掉 ${pickBroke}`);
+} else {
+  check('镐子挖石加速', false, '未能放置石头');
+}
 await page.keyboard.press('Digit1');
 
 // --- 背包:E 打开,点选砖块放入当前槽位,再放置到世界 ---
@@ -336,6 +399,50 @@ check(
   `生成 ${pigSpawned} 只,${punches} 拳后剩余 ${pigsLeft}(3 拳应击杀)`,
 );
 
+// --- 剑:双倍伤害,一剑 hp 3→1,两剑毙命 ---
+await page.keyboard.press('Digit8'); // 背包取剑到槽位 8
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(250);
+await page.click('#inv-grid .inv-slot[title="剑"]');
+await page.waitForTimeout(250);
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 3;
+  const z = Math.floor(s.z) + 1;
+  const h = g.world.gen.heightAt(x, z);
+  g.mobs.spawnAt(x + 0.5, h + 1.01, z + 0.5);
+});
+let swordHits = 0;
+let hpAfterOne = -1;
+while (swordHits < 5 && (await page.evaluate(() => window.__game.mobs.count())) > 0) {
+  await page.evaluate(() => {
+    const g = window.__game;
+    const list = g.mobs.list();
+    if (!list.length) return;
+    const m = list[0];
+    g.player.pos.set(m.x - 2, m.y, m.z);
+    g.player.vel.set(0, 0, 0);
+    g.player.yaw = Math.atan2(-(m.x - (m.x - 2)), 0);
+    g.player.pitch = -0.42;
+  });
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  await page.mouse.up();
+  swordHits++;
+  if (swordHits === 1) {
+    await page.waitForTimeout(150);
+    hpAfterOne = await page.evaluate(() => window.__game.mobs.list()[0]?.hp ?? 0);
+  }
+  await page.waitForTimeout(400);
+}
+check(
+  '剑:双倍伤害',
+  hpAfterOne <= 1 && swordHits <= 3,
+  `一剑后 hp=${hpAfterOne}(应 ≤1),${swordHits} 剑毙命(徒手需 3+)`,
+);
+await page.keyboard.press('Digit1');
+
 // --- 羊与鸡:生成到面前合影 ---
 await page.evaluate(() => {
   const g = window.__game;
@@ -396,14 +503,48 @@ const tntPos = await page.evaluate(() => {
   return null;
 });
 if (tntPos) {
+  const countTnt = () =>
+    page.evaluate(({ x, y, z }) => {
+      const g = window.__game;
+      let n = 0;
+      for (let dx = -3; dx <= 3; dx++) {
+        for (let dy = -2; dy <= 3; dy++) {
+          for (let dz = -3; dz <= 3; dz++) {
+            if (g.world.getBlock(x + dx, y + dy, z + dz) === 17) n++;
+          }
+        }
+      }
+      return n;
+    }, tntPos);
+  // 手持 TNT 再点按同一处:应堆叠出第二个 TNT 而不是点燃
+  await page.mouse.down();
+  await page.waitForTimeout(60);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const stacked = await countTnt();
+  check('TNT 堆叠(不再点按即燃)', stacked === 2, `连点两次后场上 TNT=${stacked}(应为 2)`);
+
+  // 换打火石点燃:背包取打火石到槽位 6
+  await page.keyboard.press('Digit6');
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(250);
+  await page.click('#inv-grid .inv-slot[title="打火石"]');
+  await page.waitForTimeout(250);
+  // 重新对准(page.click 的鼠标移动会转动视角)
+  await page.evaluate(() => {
+    const g = window.__game;
+    g.player.yaw = 0;
+    g.player.pitch = -0.65;
+  });
+  await page.waitForTimeout(120);
   const groundBefore = await blockAt(tntPos.x, tntPos.y - 1, tntPos.z);
-  await page.mouse.down(); // 点按点燃
+  await page.mouse.down(); // 打火石点按点燃
   await page.waitForTimeout(60);
   await page.mouse.up();
   await page.waitForTimeout(700);
-  const ignited = (await blockAt(tntPos.x, tntPos.y, tntPos.z)) === 0;
+  const afterIgnite = await countTnt(); // 被点燃的那个变为闪烁实体
   await page.screenshot({ path: `${OUT}/5a-tnt-primed.png` });
-  await page.waitForTimeout(2600); // 等引信 + 爆炸
+  await page.waitForTimeout(2600); // 等引信 + 连锁爆炸
   const groundAfter = await blockAt(tntPos.x, tntPos.y - 1, tntPos.z);
   // 统计弹坑空洞规模
   const crater = await page.evaluate(({ x, y, z }) => {
@@ -419,13 +560,14 @@ if (tntPos) {
     return air;
   }, tntPos);
   check(
-    'TNT 爆炸成坑',
-    ignited && groundBefore !== 0 && groundAfter === 0 && crater > 60,
-    `点燃 ${ignited},地面 ${groundBefore}→${groundAfter},5³ 范围空洞 ${crater}/125`,
+    '打火石点燃 TNT 成坑',
+    afterIgnite === 1 && groundBefore !== 0 && groundAfter === 0 && crater > 60,
+    `点燃后场上 TNT ${stacked}→${afterIgnite},地面 ${groundBefore}→${groundAfter},5³ 空洞 ${crater}/125`,
   );
   await page.screenshot({ path: `${OUT}/5a-tnt-crater.png` });
 } else {
-  check('TNT 爆炸成坑', false, '未能放置 TNT');
+  check('TNT 堆叠(不再点按即燃)', false, '未能放置 TNT');
+  check('打火石点燃 TNT 成坑', false, '未能放置 TNT');
 }
 await page.keyboard.press('Digit4'); // 切回圆石,避免影响后续
 await page.waitForTimeout(120);
@@ -448,7 +590,9 @@ await page.evaluate(() => {
   g.player.pitch = Math.atan((h + 1.5 - (py + 1.62)) / 4);
 });
 await page.waitForTimeout(250);
-await page.mouse.down(); // 点按点燃
+await page.keyboard.press('Digit6'); // 槽位 6 已放打火石
+await page.waitForTimeout(120);
+await page.mouse.down(); // 打火石点燃
 await page.waitForTimeout(60);
 await page.mouse.up();
 await page.waitForTimeout(3200); // 引信 2.2s + 爆炸落定
@@ -643,12 +787,18 @@ await page.waitForSelector('canvas.game', { timeout: 15000 });
 await page.waitForTimeout(2000);
 const rescued = await page.evaluate(() => {
   const g = window.__game;
-  return { y: g.player.pos.y, spawnY: g.spawn.y };
+  const p = g.player.pos;
+  return {
+    y: p.y,
+    spawnY: g.spawn.y,
+    // 出生点可能被前面的 TNT 测试炸出坑,只断言"脱离地底、回到出生点水平位置"
+    nearXZ: Math.hypot(p.x - g.spawn.x, p.z - g.spawn.z) < 2.5,
+  };
 });
 check(
   '地底坏存档自救',
-  Math.abs(rescued.y - rescued.spawnY) < 3,
-  `读档位置 y=${rescued.y.toFixed(1)}(出生点 y=${rescued.spawnY.toFixed(1)})`,
+  rescued.y > 20 && rescued.nearXZ,
+  `读档位置 y=${rescued.y.toFixed(1)}(卡死点 y=3,出生点 y=${rescued.spawnY.toFixed(1)},水平回位 ${rescued.nearXZ})`,
 );
 
 // --- 清除存档:重开后存档为空、回到全新世界(回归:reload 时自动存档不得写回) ---

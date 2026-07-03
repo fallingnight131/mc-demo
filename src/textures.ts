@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { ATLAS_COLS, ATLAS_ROWS, BLOCK_DEFS, Tile, TILE_PX } from './blocks';
 import { mulberry32 } from './noise';
+import { Tool } from './tools';
 
 const TS = TILE_PX;
 
@@ -301,6 +302,9 @@ const painters: Record<number, Painter> = {
       }
     }
   },
+  [Tile.IronBlock]: (img, rng) => metalPaint(img, rng, [212, 212, 216]),
+  [Tile.GoldBlock]: (img, rng) => metalPaint(img, rng, [246, 206, 70]),
+  [Tile.DiamondBlock]: (img, rng) => metalPaint(img, rng, [108, 222, 214]),
   [Tile.PumpkinFace]: (img, rng) => {
     pumpkinBase(img, rng);
     const dark = (x: number, y: number) => px(img, x, y, 34, 20, 8);
@@ -341,6 +345,25 @@ function oreTexture(img: ImageData, rng: () => number, ore: [number, number, num
   }
 }
 
+/** 金属块:低噪底色 + 左上亮边/右下暗边 + 内框 */
+function metalPaint(img: ImageData, rng: () => number, base: [number, number, number]): void {
+  noiseFill(img, rng, base, 4);
+  const shade = (x: number, y: number, d: number) =>
+    px(img, x, y, clamp255(base[0] + d), clamp255(base[1] + d), clamp255(base[2] + d));
+  for (let i = 0; i < TS; i++) {
+    shade(i, 0, 26);
+    shade(0, i, 26);
+    shade(i, TS - 1, -34);
+    shade(TS - 1, i, -34);
+  }
+  for (let i = 2; i < TS - 2; i++) {
+    shade(i, 2, -14);
+    shade(2, i, -14);
+    shade(i, TS - 3, 12);
+    shade(TS - 3, i, 12);
+  }
+}
+
 /** 南瓜侧面基底:竖向棱纹 */
 function pumpkinBase(img: ImageData, rng: () => number): void {
   for (let x = 0; x < TS; x++) {
@@ -358,6 +381,7 @@ export interface GameTextures {
   atlas: THREE.CanvasTexture;
   atlasCanvas: HTMLCanvasElement;
   iconFor(blockId: number): HTMLCanvasElement;
+  toolIconFor(toolId: number): HTMLCanvasElement;
 }
 
 export function buildTextures(): GameTextures {
@@ -419,7 +443,82 @@ export function buildTextures(): GameTextures {
     return icon;
   };
 
-  return { atlas, atlasCanvas: canvas, iconFor };
+  const toolIconCache = new Map<number, HTMLCanvasElement>();
+  const toolIconFor = (toolId: number): HTMLCanvasElement => {
+    const cached = toolIconCache.get(toolId);
+    if (cached) return cached;
+    const small = document.createElement('canvas');
+    small.width = TS;
+    small.height = TS;
+    const sc = small.getContext('2d')!;
+    const img = sc.createImageData(TS, TS);
+    paintTool(img, toolId);
+    sc.putImageData(img, 0, 0);
+    const icon = document.createElement('canvas');
+    icon.width = 48;
+    icon.height = 48;
+    const ic = icon.getContext('2d')!;
+    ic.imageSmoothingEnabled = false;
+    ic.drawImage(small, 0, 0, 48, 48);
+    toolIconCache.set(toolId, icon);
+    return icon;
+  };
+
+  return { atlas, atlasCanvas: canvas, iconFor, toolIconFor };
+}
+
+/** 16px 工具像素画:镐/剑/打火石 */
+function paintTool(img: ImageData, toolId: number): void {
+  const P = (x: number, y: number, r: number, g: number, b: number) => px(img, x, y, r, g, b);
+  if (toolId === Tool.Pickaxe) {
+    // 木柄(左下 → 右上对角)
+    for (let i = 0; i < 9; i++) P(3 + i, 12 - i, 146, 104, 60);
+    // 石灰色弧形镐头
+    const head: Array<[number, number]> = [
+      [5, 2], [6, 2], [7, 1], [8, 1], [9, 1], [10, 2], [11, 2],
+      [3, 3], [4, 3], [12, 3], [13, 3],
+      [2, 4], [13, 4], [2, 5], [14, 5], [1, 6], [14, 6],
+    ];
+    for (const [x, y] of head) P(x, y, 176, 178, 184);
+  } else if (toolId === Tool.Sword) {
+    // 亮色剑刃(2px 宽对角)
+    for (let i = 0; i < 8; i++) {
+      P(12 - i, 3 + i, 214, 228, 240);
+      P(13 - i, 3 + i, 176, 196, 214);
+    }
+    P(13, 2, 230, 240, 250);
+    // 金色护手
+    P(4, 9, 198, 158, 58);
+    P(5, 10, 198, 158, 58);
+    P(6, 11, 198, 158, 58);
+    P(3, 10, 198, 158, 58);
+    P(4, 11, 198, 158, 58);
+    // 深棕握柄
+    P(3, 12, 104, 74, 44);
+    P(2, 13, 104, 74, 44);
+  } else {
+    // 打火石:左下燧石 + 右上钢环
+    for (let y = 9; y <= 13; y++) {
+      for (let x = 2; x <= 2 + (13 - y); x++) {
+        P(x, y, 74, 72, 78);
+      }
+    }
+    P(3, 10, 96, 94, 100);
+    P(4, 11, 96, 94, 100);
+    const ring: Array<[number, number]> = [
+      [9, 3], [10, 3], [11, 3],
+      [8, 4], [12, 4],
+      [7, 5], [13, 5],
+      [7, 6], [13, 6],
+      [7, 7], [13, 7],
+      [8, 8], [12, 8],
+      [9, 9], [10, 9],
+    ];
+    for (const [x, y] of ring) P(x, y, 190, 192, 198);
+    // 火花
+    P(5, 6, 255, 196, 64);
+    P(4, 5, 255, 236, 128);
+  }
 }
 
 /** 独立的水面贴图(与图集分离,便于做 UV 漂移动画) */

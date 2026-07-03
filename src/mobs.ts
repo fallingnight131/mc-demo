@@ -427,9 +427,9 @@ export class Mobs {
     return best;
   }
 
-  /** 攻击:扣血、红闪、朝攻击方向击退并逃窜,归零即死 */
-  hurt(hit: MobHit, dir: THREE.Vector3): void {
-    this.damage(hit.mob, 1, dir.x, dir.z, 6, 4.4);
+  /** 攻击:扣血、红闪、朝攻击方向击退并逃窜,归零即死(剑等武器伤害更高) */
+  hurt(hit: MobHit, dir: THREE.Vector3, dmg = 1): void {
+    this.damage(hit.mob, dmg, dir.x, dir.z, 6, 4.4);
   }
 
   /** 爆炸波及:距离决定伤害,从爆心向外击退 */

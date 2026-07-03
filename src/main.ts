@@ -11,7 +11,8 @@ import { Mobs, type MobKind } from './mobs';
 import { Particles } from './particles';
 import { Player } from './player';
 import { Sky, SKY_HORIZON } from './sky';
-import { Sound } from './sound';
+import { materialOf, Sound } from './sound';
+import { isTool, Tool, TOOL_DEFS, TOOL_IDS } from './tools';
 import { buildCrackTextures, buildTextures, buildWaterTexture } from './textures';
 import { isTouchDevice, TouchControls } from './touch';
 import { World, type EditData, type RayHit } from './world';
@@ -300,13 +301,18 @@ function updateTnt(dt: number): void {
 // --- HUD 与输入 ---
 const hud = new HUD();
 const HOTBAR_SIZE = 10;
-const slotFor = (id: number) => ({ id, name: BLOCK_DEFS[id].name, icon: textures.iconFor(id) });
+/** 背包可选物品:全部方块 + 工具 */
+const INVENTORY_ITEMS = [...PLACEABLE, ...TOOL_IDS];
+const slotFor = (id: number) =>
+  isTool(id)
+    ? { id, name: TOOL_DEFS[id].name, icon: textures.toolIconFor(id) }
+    : { id, name: BLOCK_DEFS[id].name, icon: textures.iconFor(id) };
 
-// 快捷栏:每格存方块 id,背包(E)里点选可替换当前槽位,随存档保存
+// 快捷栏:每格存方块/工具 id,背包(E)里点选可替换当前槽位,随存档保存
 let hotbar: number[] =
   Array.isArray(saved?.hotbar) &&
   saved.hotbar.length === HOTBAR_SIZE &&
-  saved.hotbar.every((id) => PLACEABLE.includes(id))
+  saved.hotbar.every((id) => INVENTORY_ITEMS.includes(id))
     ? [...saved.hotbar]
     : PLACEABLE.slice(0, HOTBAR_SIZE);
 let selectedSlot = Math.min(Math.max(start.slot, 0), HOTBAR_SIZE - 1);
@@ -403,6 +409,9 @@ let inventoryOpen = false;
 function openInventory(): void {
   if (inventoryOpen) return;
   inventoryOpen = true;
+  leftHeld = false;
+  leftDownAt = 0;
+  mining = null;
   hud.setInventoryVisible(true);
   // 真实浏览器中释放指针以便点击(测试模式的 forceLock 不受影响)
   if (document.pointerLockElement) document.exitPointerLock();
@@ -420,10 +429,10 @@ function closeInventory(relock: boolean): void {
   }
 }
 
-hud.buildInventory(PLACEABLE.map(slotFor), (id) => {
+hud.buildInventory(INVENTORY_ITEMS.map(slotFor), (id) => {
   hotbar[selectedSlot] = id;
   refreshHotbar();
-  hud.toast(`${BLOCK_DEFS[id].name} → 槽位 ${(selectedSlot + 1) % 10}`);
+  hud.toast(`${slotFor(id).name} → 槽位 ${(selectedSlot + 1) % 10}`);
   closeInventory(true);
 });
 
@@ -465,13 +474,14 @@ function breakBlock(hit: RayHit): void {
 
 function placeAt(hit: RayHit | null): void {
   if (!hit) return;
+  const id = hotbar[selectedSlot];
+  if (isTool(id)) return; // 工具不是方块
   const tx = hit.x + hit.nx;
   const ty = hit.y + hit.ny;
   const tz = hit.z + hit.nz;
   const cur = world.getBlock(tx, ty, tz);
   if (cur !== Block.Air && !isWater(cur)) return;
   if (player.intersectsBlock(tx, ty, tz)) return;
-  const id = hotbar[selectedSlot];
   world.setBlock(tx, ty, tz, id);
   sound.place(id);
 }
@@ -506,13 +516,19 @@ let leftHeld = false;
 const TAP_MS = 230;
 let leftDownAt = 0;
 
-/** 右键/点按:对准 TNT 则点燃,否则放置 */
+/** 点按:手持打火石对准 TNT 才点燃(因此 TNT 可以互相堆叠),否则放置 */
 function useAt(hit: RayHit | null): void {
-  if (hit && hit.id === Block.TNT) {
+  const held = hotbar[selectedSlot];
+  if (hit && hit.id === Block.TNT && held === Tool.FlintSteel) {
+    sound.spark();
     igniteTnt(hit.x, hit.y, hit.z);
-  } else {
-    placeAt(hit);
+    return;
   }
+  if (held === Tool.FlintSteel && hit) {
+    sound.spark(); // 对非 TNT 擦个火花,没别的效果
+    return;
+  }
+  placeAt(hit); // 工具在 placeAt 内被拒绝
 }
 
 /** 屏幕坐标 → 世界射线方向(触屏点按/长按用指尖位置而非准星) */
@@ -534,14 +550,18 @@ function tapInteract(px: number, py: number): void {
     ? Math.hypot(bhit.x + 0.5 - origin.x, bhit.y + 0.5 - origin.y, bhit.z + 0.5 - origin.z)
     : Infinity;
   if (mhit && mhit.dist < bdist) {
+    const sword = hotbar[selectedSlot] === Tool.Sword;
+    if (sword) sound.swing();
     sound.mobVoice(mhit.mob.kind, 0.8, true);
-    mobs.hurt(mhit, dir);
+    mobs.hurt(mhit, dir, sword ? 2 : 1);
   } else {
     useAt(bhit);
   }
 }
 
 input.onMouseDown = (button) => {
+  // 触屏统一走手势层;背包打开时的点选不得落入游戏(软锁下 locked 恒真)
+  if (touch || inventoryOpen) return;
   if (button === 0) {
     leftHeld = true;
     leftDownAt = performance.now();
@@ -558,8 +578,10 @@ input.onMouseDown = (button) => {
           )
         : Infinity;
       if (mhit.dist < bdist) {
+        const sword = hotbar[selectedSlot] === Tool.Sword;
+        if (sword) sound.swing();
         sound.mobVoice(mhit.mob.kind, 0.8, true);
-        mobs.hurt(mhit, dirVec);
+        mobs.hurt(mhit, dirVec, sword ? 2 : 1);
         leftDownAt = 0;
       }
     }
@@ -568,6 +590,11 @@ input.onMouseDown = (button) => {
   }
 };
 input.onMouseUp = (button) => {
+  if (touch || inventoryOpen) {
+    leftHeld = false;
+    leftDownAt = 0;
+    return;
+  }
   if (button === 0) {
     // 点按:未达长按阈值且没挖掉东西 → 放置
     if (leftDownAt > 0 && performance.now() - leftDownAt < TAP_MS) {
@@ -766,7 +793,10 @@ function frame(now: number): void {
           hitTimer: 0,
         };
       }
-      mining.progress += dt;
+      // 镐子对石类方块 3 倍速
+      const pickBoost =
+        hotbar[selectedSlot] === Tool.Pickaxe && materialOf(digHit.id) === 'stone' ? 3 : 1;
+      mining.progress += dt * pickBoost;
       mining.hitTimer -= dt;
       if (mining.hitTimer <= 0) {
         sound.hit(digHit.id);

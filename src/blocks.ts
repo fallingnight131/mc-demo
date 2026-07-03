@@ -35,6 +35,9 @@ export const Tile = {
   PumpkinSide: 26,
   PumpkinTop: 27,
   PumpkinFace: 28,
+  IronBlock: 29,
+  GoldBlock: 30,
+  DiamondBlock: 31,
 } as const;
 
 export const Block = {
@@ -66,6 +69,9 @@ export const Block = {
   DiamondOre: 24,
   Obsidian: 25,
   Pumpkin: 26,
+  IronBlock: 27,
+  GoldBlock: 28,
+  DiamondBlock: 29,
 } as const;
 
 export interface BlockDef {
@@ -109,6 +115,9 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '钻石矿石', tiles: [T.DiamondOre, T.DiamondOre, T.DiamondOre, T.DiamondOre, T.DiamondOre, T.DiamondOre], solid: true, opaque: true, hardness: 2.2 },
   { name: '黑曜石', tiles: [T.Obsidian, T.Obsidian, T.Obsidian, T.Obsidian, T.Obsidian, T.Obsidian], solid: true, opaque: true, hardness: 4 },
   { name: '南瓜', tiles: [T.PumpkinSide, T.PumpkinSide, T.PumpkinTop, T.PumpkinTop, T.PumpkinFace, T.PumpkinSide], solid: true, opaque: true, hardness: 0.5 },
+  { name: '铁块', tiles: [T.IronBlock, T.IronBlock, T.IronBlock, T.IronBlock, T.IronBlock, T.IronBlock], solid: true, opaque: true, hardness: 2.5 },
+  { name: '金块', tiles: [T.GoldBlock, T.GoldBlock, T.GoldBlock, T.GoldBlock, T.GoldBlock, T.GoldBlock], solid: true, opaque: true, hardness: 2 },
+  { name: '钻石块', tiles: [T.DiamondBlock, T.DiamondBlock, T.DiamondBlock, T.DiamondBlock, T.DiamondBlock, T.DiamondBlock], solid: true, opaque: true, hardness: 3 },
 ];
 
 /** 是否为水(水源或任意等级流水) */
@@ -150,6 +159,9 @@ export const PLACEABLE: number[] = [
   Block.IronOre,
   Block.GoldOre,
   Block.DiamondOre,
+  Block.IronBlock,
+  Block.GoldBlock,
+  Block.DiamondBlock,
 ];
 
 export interface TileUV {
