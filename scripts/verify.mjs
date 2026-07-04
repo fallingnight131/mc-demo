@@ -378,7 +378,6 @@ const toolIconStyle = await page.evaluate(() => {
     return n;
   };
   const iron = (r, g, b) => r > 120 && g > 120 && b > 120 && Math.abs(r - g) < 32 && Math.abs(g - b) < 32;
-  const diamond = (r, g, b) => r < 120 && g > 145 && b > 145;
   const wood = (r, g, b) => r > 75 && r > g + 18 && g > b + 10;
   const sword = pixels('剑');
   const pick = pixels('镐子');
@@ -386,9 +385,10 @@ const toolIconStyle = await page.evaluate(() => {
     swordIron: count(sword, iron),
     swordGuard: count(sword, (r, g, b) => r > 65 && r < 150 && Math.abs(r - g) < 18 && Math.abs(g - b) < 24, (x, y) => x < 24 && y > 20),
     swordWood: count(sword, wood, (x, y) => x < 18 && y > 32),
-    pickDiamond: count(pick, diamond),
-    pickHeadLeft: count(pick, diamond, (x, y) => x < 24 && y < 18),
-    pickTipDown: count(pick, diamond, (x, y) => x > 30 && y > 18),
+    pickIron: count(pick, iron),
+    pickHeadLeft: count(pick, iron, (x, y) => x < 24 && y < 18),
+    pickTipRight: count(pick, iron, (x, y) => x > 24 && y < 24),
+    pickLowRightIron: count(pick, iron, (x, y) => x > 30 && y > 24),
     pickWood: count(pick, wood, (x, y) => x < 24 && y > 24),
   };
 });
@@ -397,11 +397,12 @@ check(
   toolIconStyle.swordIron > 120 &&
     toolIconStyle.swordGuard > 35 &&
     toolIconStyle.swordWood > 20 &&
-    toolIconStyle.pickDiamond > 120 &&
-    toolIconStyle.pickHeadLeft > 60 &&
-    toolIconStyle.pickTipDown > 45 &&
+    toolIconStyle.pickIron > 170 &&
+    toolIconStyle.pickHeadLeft > 80 &&
+    toolIconStyle.pickTipRight > 45 &&
+    toolIconStyle.pickLowRightIron < 12 &&
     toolIconStyle.pickWood > 45,
-  `铁剑刃/护手/木柄 ${toolIconStyle.swordIron}/${toolIconStyle.swordGuard}/${toolIconStyle.swordWood},钻石镐头/左头/下尖/木柄 ${toolIconStyle.pickDiamond}/${toolIconStyle.pickHeadLeft}/${toolIconStyle.pickTipDown}/${toolIconStyle.pickWood}`,
+  `铁剑刃/护手/木柄 ${toolIconStyle.swordIron}/${toolIconStyle.swordGuard}/${toolIconStyle.swordWood},铁镐头/左头/右尖/右下长钩/木柄 ${toolIconStyle.pickIron}/${toolIconStyle.pickHeadLeft}/${toolIconStyle.pickTipRight}/${toolIconStyle.pickLowRightIron}/${toolIconStyle.pickWood}`,
 );
 await page.click('#inv-grid .inv-slot[title="砖块"]');
 await page.waitForTimeout(250);
