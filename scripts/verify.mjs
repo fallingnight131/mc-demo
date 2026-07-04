@@ -386,9 +386,9 @@ const toolIconStyle = await page.evaluate(() => {
     swordGuard: count(sword, (r, g, b) => r > 65 && r < 150 && Math.abs(r - g) < 18 && Math.abs(g - b) < 24, (x, y) => x < 24 && y > 20),
     swordWood: count(sword, wood, (x, y) => x < 18 && y > 32),
     pickIron: count(pick, iron),
-    pickHeadLeft: count(pick, iron, (x, y) => x < 24 && y < 18),
-    pickTipRight: count(pick, iron, (x, y) => x > 24 && y < 24),
-    pickLowRightIron: count(pick, iron, (x, y) => x > 30 && y > 24),
+    // 斜向镐头:金属需同时出现在左上(左尖)与右下(右尖),证明镐头是斜的而非横平。
+    pickHeadUpLeft: count(pick, iron, (x, y) => x < 27 && y < 15),
+    pickTipDownRight: count(pick, iron, (x, y) => x > 30 && y > 18),
     pickWood: count(pick, wood, (x, y) => x < 24 && y > 24),
   };
 });
@@ -398,11 +398,10 @@ check(
     toolIconStyle.swordGuard > 35 &&
     toolIconStyle.swordWood > 20 &&
     toolIconStyle.pickIron > 170 &&
-    toolIconStyle.pickHeadLeft > 80 &&
-    toolIconStyle.pickTipRight > 45 &&
-    toolIconStyle.pickLowRightIron < 12 &&
+    toolIconStyle.pickHeadUpLeft > 60 &&
+    toolIconStyle.pickTipDownRight > 28 &&
     toolIconStyle.pickWood > 45,
-  `铁剑刃/护手/木柄 ${toolIconStyle.swordIron}/${toolIconStyle.swordGuard}/${toolIconStyle.swordWood},铁镐头/左头/右尖/右下长钩/木柄 ${toolIconStyle.pickIron}/${toolIconStyle.pickHeadLeft}/${toolIconStyle.pickTipRight}/${toolIconStyle.pickLowRightIron}/${toolIconStyle.pickWood}`,
+  `铁剑刃/护手/木柄 ${toolIconStyle.swordIron}/${toolIconStyle.swordGuard}/${toolIconStyle.swordWood},斜镐头/左上头/右下尖/木柄 ${toolIconStyle.pickIron}/${toolIconStyle.pickHeadUpLeft}/${toolIconStyle.pickTipDownRight}/${toolIconStyle.pickWood}`,
 );
 await page.click('#inv-grid .inv-slot[title="砖块"]');
 await page.waitForTimeout(250);
