@@ -353,6 +353,35 @@ const invOpen = await page.evaluate(() =>
   document.getElementById('inventory').classList.contains('open'),
 );
 await page.screenshot({ path: `${OUT}/9-inventory.png` });
+const toolIconStyle = await page.evaluate(() => {
+  const pixels = (title) => {
+    const slot = [...document.querySelectorAll('#inv-grid .inv-slot')].find(
+      (el) => el.getAttribute('title') === title,
+    );
+    const canvas = slot?.querySelector('canvas');
+    if (!(canvas instanceof HTMLCanvasElement)) return null;
+    return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  };
+  const count = (data, pred) => {
+    if (!data) return 0;
+    let n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 120 && pred(data[i], data[i + 1], data[i + 2])) n++;
+    }
+    return n;
+  };
+  const sword = pixels('剑');
+  const pick = pixels('镐子');
+  return {
+    swordDiamond: count(sword, (r, g, b) => r < 130 && g > 145 && b > 145),
+    pickIron: count(pick, (r, g, b) => r > 130 && r < 245 && Math.abs(r - g) < 18 && Math.abs(g - b) < 24),
+  };
+});
+check(
+  '工具图标 MC 风格',
+  toolIconStyle.swordDiamond > 120 && toolIconStyle.pickIron > 120,
+  `剑钻石蓝像素 ${toolIconStyle.swordDiamond},镐铁灰像素 ${toolIconStyle.pickIron}`,
+);
 await page.click('#inv-grid .inv-slot[title="砖块"]');
 await page.waitForTimeout(250);
 const invClosed = await page.evaluate(
@@ -962,6 +991,67 @@ await mob.waitForSelector('canvas.game', { timeout: 15000 });
 await mob.waitForTimeout(2500);
 const touchUI = (await mob.$('#joy-base')) !== null;
 await mob.screenshot({ path: `${OUT}/12-touch-ui.png` });
+const touchLayoutAt = async (width) => {
+  await mob.setViewportSize({ width, height: 375 });
+  await mob.waitForTimeout(120);
+  const r = await mob.evaluate(() => {
+    const pick = (id) => {
+      const b = document.getElementById(id).getBoundingClientRect();
+      return { x: b.x, y: b.y, right: b.right, bottom: b.bottom, width: b.width, height: b.height };
+    };
+    const hotbar = document.getElementById('hotbar').getBoundingClientRect();
+    return {
+      viewport: { w: innerWidth, h: innerHeight },
+      boxes: {
+        joy: pick('joy-base'),
+        jump: pick('btn-jump'),
+        sprint: pick('btn-sprint'),
+        pause: pick('btn-pause'),
+        inv: pick('btn-inv'),
+        time: pick('btn-time'),
+        hotbar: {
+          x: hotbar.x,
+          y: hotbar.y,
+          right: hotbar.right,
+          bottom: hotbar.bottom,
+          width: hotbar.width,
+          height: hotbar.height,
+        },
+      },
+    };
+  });
+  const inside = (b) => b.x >= 0 && b.y >= 0 && b.right <= r.viewport.w && b.bottom <= r.viewport.h;
+  const overlap = (a, b, gap = 4) =>
+    !(a.right + gap <= b.x || b.right + gap <= a.x || a.bottom + gap <= b.y || b.bottom + gap <= a.y);
+  const pairs = [
+    ['joy', 'hotbar'],
+    ['jump', 'sprint'],
+    ['jump', 'hotbar'],
+    ['sprint', 'hotbar'],
+    ['pause', 'jump'],
+    ['inv', 'jump'],
+    ['time', 'jump'],
+  ];
+  const badPair = pairs.find(([a, b]) => overlap(r.boxes[a], r.boxes[b]));
+  const allInside = Object.values(r.boxes).every(inside);
+  const sameActionSize =
+    Math.abs(r.boxes.jump.width - r.boxes.sprint.width) < 1 &&
+    Math.abs(r.boxes.jump.height - r.boxes.sprint.height) < 1;
+  const lowered = r.boxes.joy.y > 160 && r.boxes.jump.y > 160 && r.boxes.sprint.y > 225;
+  return {
+    ok: allInside && sameActionSize && lowered && !badPair,
+    detail: `${width}px:摇杆y=${r.boxes.joy.y.toFixed(0)},跳y=${r.boxes.jump.y.toFixed(0)},冲刺y=${r.boxes.sprint.y.toFixed(0)},${badPair ? `重叠 ${badPair.join('/')}` : '无重叠'}`,
+  };
+};
+const layout812 = await touchLayoutAt(812);
+const layout667 = await touchLayoutAt(667);
+await mob.setViewportSize({ width: 812, height: 375 });
+await mob.waitForTimeout(120);
+check(
+  '触屏按钮布局',
+  layout812.ok && layout667.ok,
+  `${layout812.detail}; ${layout667.detail}`,
+);
 // 摇杆前推 1.3s
 const joyBox = await (await mob.$('#joy-base')).boundingBox();
 const jcx = joyBox.x + joyBox.width / 2;
