@@ -68,10 +68,14 @@ export const Block = {
   GoldOre: 23,
   DiamondOre: 24,
   Obsidian: 25,
-  Pumpkin: 26,
+  Pumpkin: 26, // 脸朝 +z(南)
   IronBlock: 27,
   GoldBlock: 28,
   DiamondBlock: 29,
+  // 南瓜的其余三个水平朝向(放置时按视角选择,共用基础南瓜的贴图)
+  PumpkinE: 30, // 脸朝 +x
+  PumpkinN: 31, // 脸朝 -z
+  PumpkinW: 32, // 脸朝 -x
 } as const;
 
 export interface BlockDef {
@@ -118,6 +122,9 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '铁块', tiles: [T.IronBlock, T.IronBlock, T.IronBlock, T.IronBlock, T.IronBlock, T.IronBlock], solid: true, opaque: true, hardness: 2.5 },
   { name: '金块', tiles: [T.GoldBlock, T.GoldBlock, T.GoldBlock, T.GoldBlock, T.GoldBlock, T.GoldBlock], solid: true, opaque: true, hardness: 2 },
   { name: '钻石块', tiles: [T.DiamondBlock, T.DiamondBlock, T.DiamondBlock, T.DiamondBlock, T.DiamondBlock, T.DiamondBlock], solid: true, opaque: true, hardness: 3 },
+  { name: '南瓜', tiles: [T.PumpkinFace, T.PumpkinSide, T.PumpkinTop, T.PumpkinTop, T.PumpkinSide, T.PumpkinSide], solid: true, opaque: true, hardness: 0.5 },
+  { name: '南瓜', tiles: [T.PumpkinSide, T.PumpkinSide, T.PumpkinTop, T.PumpkinTop, T.PumpkinSide, T.PumpkinFace], solid: true, opaque: true, hardness: 0.5 },
+  { name: '南瓜', tiles: [T.PumpkinSide, T.PumpkinFace, T.PumpkinTop, T.PumpkinTop, T.PumpkinSide, T.PumpkinSide], solid: true, opaque: true, hardness: 0.5 },
 ];
 
 /** 是否为水(水源或任意等级流水) */
@@ -163,6 +170,23 @@ export const PLACEABLE: number[] = [
   Block.GoldBlock,
   Block.DiamondBlock,
 ];
+
+/** 按放置者视角选南瓜朝向:脸转向玩家 */
+export function pumpkinVariant(yaw: number): number {
+  // 玩家前方 = (-sin, -cos),脸应朝玩家 = (sin, cos)
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  if (Math.abs(fx) > Math.abs(fz)) return fx > 0 ? Block.PumpkinE : Block.PumpkinW;
+  return fz > 0 ? Block.Pumpkin : Block.PumpkinN;
+}
+
+/** 朝向变体归一化(掉落/选取/计数按基础方块算) */
+export function baseBlock(id: number): number {
+  if (id === Block.PumpkinE || id === Block.PumpkinN || id === Block.PumpkinW) {
+    return Block.Pumpkin;
+  }
+  return id;
+}
 
 export interface TileUV {
   u0: number;

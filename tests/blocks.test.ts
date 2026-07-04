@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Block, BLOCK_DEFS, PLACEABLE } from '../src/blocks';
+import { baseBlock, Block, BLOCK_DEFS, PLACEABLE, pumpkinVariant } from '../src/blocks';
 import { CHUNK_SIZE } from '../src/config';
 import { Generator } from '../src/worldgen';
 
@@ -72,7 +72,7 @@ describe('矿石与南瓜生成', () => {
     expect(diff).toBe(-1);
   });
 
-  it('草地上偶有南瓜,且总在地表上一格', () => {
+  it('草地上偶有南瓜(含朝向变体),且总在地表上一格', () => {
     let pumpkins = 0;
     for (let cx = -4; cx < 4; cx++) {
       for (let cz = -4; cz < 4; cz++) {
@@ -81,7 +81,7 @@ describe('矿石与南瓜生成', () => {
           for (let lx = 0; lx < CS; lx++) {
             const h = gen.heightAt(cx * CS + lx, cz * CS + lz);
             for (let y = 0; y < 64; y++) {
-              if (data[idx(lx, y, lz)] === Block.Pumpkin) {
+              if (baseBlock(data[idx(lx, y, lz)]) === Block.Pumpkin) {
                 pumpkins++;
                 expect(y).toBe(h + 1);
                 expect(data[idx(lx, y - 1, lz)]).toBe(Block.Grass);
@@ -92,5 +92,17 @@ describe('矿石与南瓜生成', () => {
       }
     }
     expect(pumpkins).toBeGreaterThan(0);
+  });
+
+  it('南瓜放置朝向:脸始终转向玩家,变体归一化回基础南瓜', () => {
+    expect(pumpkinVariant(0)).toBe(Block.Pumpkin); // 面朝 -z 放置 → 脸朝 +z(玩家)
+    expect(pumpkinVariant(Math.PI)).toBe(Block.PumpkinN);
+    expect(pumpkinVariant(Math.PI / 2)).toBe(Block.PumpkinE);
+    expect(pumpkinVariant(-Math.PI / 2)).toBe(Block.PumpkinW);
+    for (const v of [Block.Pumpkin, Block.PumpkinE, Block.PumpkinN, Block.PumpkinW]) {
+      expect(baseBlock(v)).toBe(Block.Pumpkin);
+      expect(BLOCK_DEFS[v].tiles).not.toBeNull();
+    }
+    expect(baseBlock(Block.Stone)).toBe(Block.Stone);
   });
 });

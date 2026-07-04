@@ -422,18 +422,18 @@ export function buildTextures(): GameTextures {
       sy: Math.floor(t / ATLAS_COLS) * TS,
     });
 
-    // 等距小立方体:顶面 + 左右两个侧面
+    // 等距小立方体(标准 2:1:顶菱 32×16、侧高 16、错切 8,总高=宽=32)
     const top = src(topTile);
     ic.setTransform(16, 8, -16, 8, 24, 8);
     ic.drawImage(canvas, top.sx, top.sy, TS, TS, 0, 0, 1, 1);
 
     const side = src(sideTile);
-    ic.setTransform(16, 8, 0, 14, 8, 16);
+    ic.setTransform(16, 8, 0, 16, 8, 16);
     ic.drawImage(canvas, side.sx, side.sy, TS, TS, 0, 0, 1, 1);
     ic.fillStyle = 'rgba(0,0,0,0.28)';
     ic.fillRect(0, 0, 1, 1);
 
-    ic.setTransform(16, -8, 0, 14, 24, 24);
+    ic.setTransform(16, -8, 0, 16, 24, 24);
     ic.drawImage(canvas, side.sx, side.sy, TS, TS, 0, 0, 1, 1);
     ic.fillStyle = 'rgba(0,0,0,0.42)';
     ic.fillRect(0, 0, 1, 1);
@@ -467,35 +467,52 @@ export function buildTextures(): GameTextures {
   return { atlas, atlasCanvas: canvas, iconFor, toolIconFor };
 }
 
-/** 16px 工具像素画:镐/剑/打火石 */
+/** 16px 工具像素画(MC 图标风格:45° 对角、双色刃/弧形镐头、木柄) */
 function paintTool(img: ImageData, toolId: number): void {
   const P = (x: number, y: number, r: number, g: number, b: number) => px(img, x, y, r, g, b);
   if (toolId === Tool.Pickaxe) {
-    // 木柄(左下 → 右上对角)
-    for (let i = 0; i < 9; i++) P(3 + i, 12 - i, 146, 104, 60);
-    // 石灰色弧形镐头
-    const head: Array<[number, number]> = [
-      [5, 2], [6, 2], [7, 1], [8, 1], [9, 1], [10, 2], [11, 2],
-      [3, 3], [4, 3], [12, 3], [13, 3],
-      [2, 4], [13, 4], [2, 5], [14, 5], [1, 6], [14, 6],
-    ];
-    for (const [x, y] of head) P(x, y, 176, 178, 184);
-  } else if (toolId === Tool.Sword) {
-    // 亮色剑刃(2px 宽对角)
-    for (let i = 0; i < 8; i++) {
-      P(12 - i, 3 + i, 214, 228, 240);
-      P(13 - i, 3 + i, 176, 196, 214);
+    // 木柄:双色对角(亮脊 + 暗侧),MC 铁镐样式
+    for (let i = 0; i < 9; i++) {
+      P(2 + i, 13 - i, 150, 108, 62);
+      P(3 + i, 13 - i, 110, 78, 44);
     }
-    P(13, 2, 230, 240, 250);
-    // 金色护手
-    P(4, 9, 198, 158, 58);
-    P(5, 10, 198, 158, 58);
-    P(6, 11, 198, 158, 58);
-    P(3, 10, 198, 158, 58);
-    P(4, 11, 198, 158, 58);
-    // 深棕握柄
-    P(3, 12, 104, 74, 44);
-    P(2, 13, 104, 74, 44);
+    // 弧形铁镐头:外圈亮、内缘暗
+    const bright: Array<[number, number]> = [
+      [5, 1], [6, 1], [7, 1], [8, 1], [9, 1], [10, 1],
+      [3, 2], [4, 2], [11, 2], [12, 2],
+      [2, 3], [13, 3],
+      [1, 4], [14, 4],
+      [1, 5], [14, 5],
+      [1, 6], [14, 6],
+    ];
+    const dark: Array<[number, number]> = [
+      [5, 2], [6, 2], [7, 2], [8, 2], [9, 2], [10, 2],
+      [3, 3], [4, 3], [11, 3], [12, 3],
+      [2, 4], [13, 4],
+      [2, 5], [14, 7],
+      [1, 7],
+    ];
+    for (const [x, y] of bright) P(x, y, 202, 206, 214);
+    for (const [x, y] of dark) P(x, y, 138, 144, 154);
+  } else if (toolId === Tool.Sword) {
+    // 铁剑:45° 双色刃(亮脊在左上、暗刃在右下),剑尖右上
+    P(14, 1, 236, 242, 248);
+    for (let i = 0; i < 8; i++) {
+      P(13 - i, 2 + i, 220, 226, 234);
+      P(14 - i, 2 + i, 152, 160, 172);
+    }
+    // 深棕护手(垂直于刃的短斜杠)
+    for (const [x, y] of [
+      [3, 9], [4, 10], [5, 11],
+      [4, 9], [5, 10], [6, 11],
+      [3, 8], [6, 12],
+    ] as Array<[number, number]>) {
+      P(x, y, 96, 68, 40);
+    }
+    // 握柄 + 柄尾
+    P(3, 12, 134, 96, 56);
+    P(2, 13, 134, 96, 56);
+    P(1, 14, 82, 56, 32);
   } else {
     // 打火石:左下燧石 + 右上钢环
     for (let y = 9; y <= 13; y++) {

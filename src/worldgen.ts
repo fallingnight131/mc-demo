@@ -87,9 +87,10 @@ export class Generator {
         for (let y = h + 1; y <= SEA_LEVEL; y++) {
           data[idx(lx, y, lz)] = Block.Water;
         }
-        // 草地上的野生南瓜(避开树)
+        // 草地上的野生南瓜(避开树),朝向按位置确定性随机
         if (!sandy && !snowy && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && this.hasPumpkin(wx, wz)) {
-          data[idx(lx, h + 1, lz)] = Block.Pumpkin;
+          const face = [Block.Pumpkin, Block.PumpkinE, Block.PumpkinN, Block.PumpkinW];
+          data[idx(lx, h + 1, lz)] = face[(hash2(wx, wz, this.seed ^ 0x9c1a) * 4) | 0];
         }
       }
     }

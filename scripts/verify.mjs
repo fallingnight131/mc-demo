@@ -292,6 +292,58 @@ if (stoneAt) {
 }
 await page.keyboard.press('Digit1');
 
+// --- 南瓜朝向:四个视角各放一个,脸各自转向玩家(四种变体齐全) ---
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 6;
+  const z = Math.floor(s.z) + 6;
+  g.player.pos.set(x + 0.5, g.world.gen.heightAt(x, z) + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+});
+await page.keyboard.press('Digit5'); // 槽位 5,从背包取南瓜
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(250);
+await page.click('#inv-grid .inv-slot[title="南瓜"]');
+await page.waitForTimeout(250);
+for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+  await page.evaluate((y) => {
+    const g = window.__game;
+    g.player.yaw = y;
+    g.player.pitch = -0.7;
+    g.player.vel.set(0, 0, 0);
+  }, yaw);
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  await page.waitForTimeout(60);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+}
+const pumpkinIds = await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  const found = new Set();
+  for (let dy = 1; dy >= -2; dy--) {
+    for (let dx = -4; dx <= 4; dx++) {
+      for (let dz = -4; dz <= 4; dz++) {
+        const id = g.world.getBlock(
+          Math.floor(p.x) + dx,
+          Math.floor(p.y) + dy,
+          Math.floor(p.z) + dz,
+        );
+        if (id === 26 || id === 30 || id === 31 || id === 32) found.add(id);
+      }
+    }
+  }
+  return [...found].sort((a, b) => a - b);
+});
+check(
+  '南瓜放置朝向',
+  pumpkinIds.join(',') === '26,30,31,32',
+  `四向放置得到变体 [${pumpkinIds.join(',')}](应为 26,30,31,32)`,
+);
+await page.keyboard.press('Digit1');
+
 // --- 背包:E 打开,点选砖块放入当前槽位,再放置到世界 ---
 await page.keyboard.press('Digit5'); // 选中槽位 5(默认木板)
 await page.waitForTimeout(120);
@@ -441,6 +493,34 @@ check(
   hpAfterOne <= 1 && swordHits <= 3,
   `一剑后 hp=${hpAfterOne}(应 ≤1),${swordHits} 剑毙命(徒手需 3+)`,
 );
+
+// --- 剑不能挖掘(与 MC 一致):手持剑对草方块长按 1s,方块仍在 ---
+await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player;
+  const x = Math.floor(p.pos.x);
+  const z = Math.floor(p.pos.z);
+  let y = Math.floor(p.pos.y);
+  while (y > 1 && !g.world.isSolid(x, y - 1, z)) y--;
+  p.pos.set(x + 0.5, y + 0.01, z + 0.5);
+  p.vel.set(0, 0, 0);
+  p.pitch = -1.55; // 俯视脚下
+});
+await page.waitForTimeout(200);
+const swordDigTarget = await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  return [Math.floor(p.x), Math.floor(p.y - 0.5), Math.floor(p.z)];
+});
+await page.mouse.down(); // 手持剑(槽位 8)长按 1s
+await page.waitForTimeout(1000);
+await page.mouse.up();
+await page.waitForTimeout(150);
+const swordNoDig = await page.evaluate(
+  ([x, y, z]) => window.__game.world.getBlock(x, y, z) !== 0,
+  swordDigTarget,
+);
+check('剑不能挖掘', swordNoDig, `长按 1s 后脚下方块仍在 ${swordNoDig}(徒手 0.45s 即可挖掉)`);
 await page.keyboard.press('Digit1');
 
 // --- 羊与鸡:生成到面前合影 ---

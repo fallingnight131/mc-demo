@@ -25,6 +25,9 @@ export function materialOf(blockId: number): Material {
     case Block.Log:
     case Block.Plank:
     case Block.Pumpkin:
+    case Block.PumpkinE:
+    case Block.PumpkinN:
+    case Block.PumpkinW:
       return 'wood';
     case Block.Sand:
       return 'sand';
@@ -184,26 +187,34 @@ export class Sound {
     this.noise({ duration: 0.08, filterType: 'lowpass', freq: 900, gain: 0.3 });
   }
 
-  /** 脚步声 */
+  /** 脚步声:低频短噪声 + 轻踏点,闷而短促(原版偏"沙沙"不像脚步) */
   step(blockId: number, loud = 1): void {
     const m = materialOf(blockId);
     const conf: Record<Material, [number, number]> = {
-      stone: [700, 0.07],
-      wood: [500, 0.08],
-      soft: [950, 0.06],
-      sand: [1600, 0.07],
-      snow: [1300, 0.08],
-      glass: [1500, 0.06],
+      stone: [480, 0.05],
+      wood: [360, 0.055],
+      soft: [380, 0.05],
+      sand: [620, 0.06],
+      snow: [520, 0.06],
+      glass: [750, 0.045],
     };
     const [freq, dur] = conf[m];
-    this.noise({ duration: dur, filterType: 'bandpass', freq, q: 0.8, gain: 0.16 * loud });
-    if (m === 'stone' || m === 'wood') this.knock(120, 0.05, 0.1 * loud);
+    this.noise({
+      duration: dur,
+      filterType: 'lowpass',
+      freq: freq * 2.2,
+      freqEnd: freq * 0.8,
+      gain: 0.2 * loud,
+    });
+    this.knock(m === 'soft' || m === 'snow' ? 72 : 95, 0.045, 0.12 * loud);
   }
 
-  /** 入水声 */
+  /** 入水声:低频"咚"+ 下扫水涌 + 轻微碎沫(原版上扫过尖) */
   splash(): void {
-    this.noise({ duration: 0.4, filterType: 'bandpass', freq: 600, freqEnd: 1800, q: 1.4, gain: 0.55 });
-    this.noise({ duration: 0.25, filterType: 'highpass', freq: 1200, gain: 0.25 });
+    this.knock(150, 0.14, 0.4);
+    this.noise({ duration: 0.35, filterType: 'bandpass', freq: 1000, freqEnd: 320, q: 1, gain: 0.5 });
+    this.noise({ duration: 0.28, filterType: 'lowpass', freq: 600, freqEnd: 240, gain: 0.35 });
+    this.noise({ duration: 0.18, filterType: 'highpass', freq: 2200, gain: 0.08 });
   }
 
   /** TNT 引信嘶声 */

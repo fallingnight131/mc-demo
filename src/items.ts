@@ -29,7 +29,8 @@ export class ItemDrops {
   private readonly material: THREE.MeshBasicMaterial;
 
   constructor(atlas: THREE.Texture, private readonly world: GroundQuery) {
-    this.material = new THREE.MeshBasicMaterial({ map: atlas });
+    // alphaTest:玻璃等镂空纹理的透明像素不渲染(否则显示为黑色)
+    this.material = new THREE.MeshBasicMaterial({ map: atlas, alphaTest: 0.5 });
   }
 
   get count(): number {

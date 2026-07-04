@@ -1,7 +1,7 @@
 // 入口:渲染器、场景、游戏循环与交互逻辑的组装
 import * as THREE from 'three';
 import { buildBlockGeometry } from './blockmesh';
-import { Block, BLOCK_DEFS, isWater, PLACEABLE } from './blocks';
+import { baseBlock, Block, BLOCK_DEFS, isWater, PLACEABLE, pumpkinVariant } from './blocks';
 import { EYE_HEIGHT, REACH, RENDER_DISTANCE, CHUNK_SIZE } from './config';
 import { Input } from './controls';
 import { clockText, computeDayNight, DAY_LENGTH } from './daynight';
@@ -346,7 +346,7 @@ if (touch) {
     if (inventoryOpen) closeInventory(true);
     else if (input.locked) openInventory();
   };
-  touch.onTap = (x, y) => tapInteract(x, y);
+  touch.onTap = () => tapInteract();
 }
 
 /** 进入游戏:触屏没有指针锁定,直接软锁 */
@@ -464,12 +464,12 @@ function aimHit(): RayHit | null {
   return world.raycast(player.eyePos(eyeVec), lookDir(dirVec), REACH);
 }
 
-/** 破坏方块:粒子 + 音效 + 掉落物 */
+/** 破坏方块:粒子 + 音效 + 掉落物(朝向变体掉基础方块) */
 function breakBlock(hit: RayHit): void {
   world.setBlock(hit.x, hit.y, hit.z, Block.Air);
   particles.burst(hit.x, hit.y, hit.z, hit.id);
   sound.break(hit.id);
-  drops.spawn(hit.x, hit.y, hit.z, hit.id);
+  drops.spawn(hit.x, hit.y, hit.z, baseBlock(hit.id));
 }
 
 function placeAt(hit: RayHit | null): void {
@@ -482,16 +482,19 @@ function placeAt(hit: RayHit | null): void {
   const cur = world.getBlock(tx, ty, tz);
   if (cur !== Block.Air && !isWater(cur)) return;
   if (player.intersectsBlock(tx, ty, tz)) return;
-  world.setBlock(tx, ty, tz, id);
-  sound.place(id);
+  // 南瓜按放置视角转脸朝向玩家
+  const placed = id === Block.Pumpkin ? pumpkinVariant(player.yaw) : id;
+  world.setBlock(tx, ty, tz, placed);
+  sound.place(placed);
 }
 
 function pickAt(hit: RayHit | null): void {
   if (!hit) return;
-  let idx = hotbar.indexOf(hit.id);
-  if (idx < 0 && PLACEABLE.includes(hit.id)) {
+  const id = baseBlock(hit.id); // 朝向变体按基础方块选取
+  let idx = hotbar.indexOf(id);
+  if (idx < 0 && PLACEABLE.includes(id)) {
     // 不在快捷栏:创造模式式选取,替换当前槽位
-    hotbar[selectedSlot] = hit.id;
+    hotbar[selectedSlot] = id;
     refreshHotbar();
     idx = selectedSlot;
   }
@@ -531,19 +534,12 @@ function useAt(hit: RayHit | null): void {
   placeAt(hit); // 工具在 placeAt 内被拒绝
 }
 
-/** 屏幕坐标 → 世界射线方向(触屏点按/长按用指尖位置而非准星) */
-function screenDir(px: number, py: number, out: THREE.Vector3): THREE.Vector3 {
-  out.set((px / window.innerWidth) * 2 - 1, -(py / window.innerHeight) * 2 + 1, 0.5);
-  out.unproject(camera);
-  return out.sub(camera.position).normalize();
-}
-
-/** 触屏点按:指尖处生物优先挨拳,否则放置/点燃 */
-function tapInteract(px: number, py: number): void {
+/** 触屏点按:作用于十字准星指向处 —— 生物优先挨拳,否则放置/点燃 */
+function tapInteract(): void {
   if (!input.locked) return;
   hud.punchHand();
-  const dir = screenDir(px, py, dirVec);
-  const origin = eyeVec.copy(camera.position);
+  const origin = player.eyePos(eyeVec);
+  const dir = lookDir(dirVec);
   const mhit = mobs.raycast(origin, dir, REACH);
   const bhit = world.raycast(origin, dir, REACH);
   const bdist = bhit
@@ -770,18 +766,11 @@ function frame(now: number): void {
   }
 
   if (input.locked) {
-    // 长按左键/触屏长按/挖掘钮:挖掘进度,移开目标即重置。
-    // 触屏长按的目标是指尖所指方块(基岩版手势),其余用准星。
-    let digHit = hit;
-    let digActive = leftHeld;
-    if (touch?.mineActive) {
-      digHit = world.raycast(
-        eyeVec.copy(camera.position),
-        screenDir(touch.mineX, touch.mineY, dirVec),
-        REACH,
-      );
-      digActive = true;
-    }
+    // 长按左键/触屏长按:挖掘进度,移开目标即重置。目标一律为十字准星
+    // 指向的方块;手持剑不能挖掘(与 MC 一致)。
+    const digHit = hit;
+    const digActive =
+      (leftHeld || (touch?.mineActive ?? false)) && hotbar[selectedSlot] !== Tool.Sword;
     if (digActive && digHit && BLOCK_DEFS[digHit.id].hardness !== Infinity) {
       if (!mining || mining.x !== digHit.x || mining.y !== digHit.y || mining.z !== digHit.z) {
         mining = {

@@ -25,14 +25,12 @@ export class TouchControls {
   sprintHeld = false;
   /** 按住时钟按钮:时间快进 */
   timeHeld = false;
-  /** 长按挖掘手势进行中(挖掘目标 = 指尖所指方块) */
+  /** 长按挖掘手势进行中(挖掘目标 = 十字准星指向的方块) */
   mineActive = false;
-  mineX = 0;
-  mineY = 0;
   onPause: () => void = () => {};
   onInventory: () => void = () => {};
-  /** 点按(短触未拖动):MC 基岩版式放置/攻击,参数为屏幕坐标 */
-  onTap: (x: number, y: number) => void = () => {};
+  /** 点按(短触未拖动):作用于准星处,放置/点燃/攻击 */
+  onTap: () => void = () => {};
 
   private lookDx = 0;
   private lookDy = 0;
@@ -121,8 +119,6 @@ export class TouchControls {
       this.lookStartX = e.clientX;
       this.lookStartY = e.clientY;
       this.lookMode = 'pending';
-      this.mineX = e.clientX;
-      this.mineY = e.clientY;
       // 原地按住超过阈值 → 进入长按挖掘
       this.holdTimer = setTimeout(() => {
         if (this.lookMode === 'pending') {
@@ -144,10 +140,7 @@ export class TouchControls {
         return;
       }
       if (this.lookMode === 'mine') {
-        // 挖掘期间允许指尖微调,目标跟随指尖
-        this.mineX = e.clientX;
-        this.mineY = e.clientY;
-        return;
+        return; // 挖掘目标是准星,指尖微移不打断
       }
       this.lookDx += (e.clientX - this.lookLastX) * LOOK_SCALE;
       this.lookDy += (e.clientY - this.lookLastY) * LOOK_SCALE;
@@ -159,8 +152,7 @@ export class TouchControls {
       this.lookPointer = -1;
       this.clearHoldTimer();
       if (this.lookMode === 'pending') {
-        // 短触未拖动:点按
-        this.onTap(e.clientX, e.clientY);
+        this.onTap(); // 短触未拖动:点按
       }
       this.lookMode = 'pending';
       this.mineActive = false;
