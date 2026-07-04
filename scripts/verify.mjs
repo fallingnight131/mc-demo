@@ -360,27 +360,48 @@ const toolIconStyle = await page.evaluate(() => {
     );
     const canvas = slot?.querySelector('canvas');
     if (!(canvas instanceof HTMLCanvasElement)) return null;
-    return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    return {
+      data: canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data,
+      width: canvas.width,
+      height: canvas.height,
+    };
   };
-  const count = (data, pred) => {
-    if (!data) return 0;
+  const count = (img, pred, region = () => true) => {
+    if (!img) return 0;
     let n = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] > 120 && pred(data[i], data[i + 1], data[i + 2])) n++;
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        const i = (y * img.width + x) * 4;
+        if (img.data[i + 3] > 120 && region(x, y) && pred(img.data[i], img.data[i + 1], img.data[i + 2])) n++;
+      }
     }
     return n;
   };
+  const iron = (r, g, b) => r > 120 && g > 120 && b > 120 && Math.abs(r - g) < 32 && Math.abs(g - b) < 32;
+  const diamond = (r, g, b) => r < 120 && g > 145 && b > 145;
+  const wood = (r, g, b) => r > 75 && r > g + 18 && g > b + 10;
   const sword = pixels('剑');
   const pick = pixels('镐子');
   return {
-    swordDiamond: count(sword, (r, g, b) => r < 130 && g > 145 && b > 145),
-    pickIron: count(pick, (r, g, b) => r > 130 && r < 245 && Math.abs(r - g) < 18 && Math.abs(g - b) < 24),
+    swordIron: count(sword, iron),
+    swordGuard: count(sword, (r, g, b) => r > 65 && r < 150 && Math.abs(r - g) < 18 && Math.abs(g - b) < 24, (x, y) => x < 24 && y > 20),
+    swordWood: count(sword, wood, (x, y) => x < 18 && y > 32),
+    pickDiamond: count(pick, diamond),
+    pickHeadLeft: count(pick, diamond, (x, y) => x < 24 && y < 18),
+    pickTipDown: count(pick, diamond, (x, y) => x > 30 && y > 18),
+    pickWood: count(pick, wood, (x, y) => x < 24 && y > 24),
   };
 });
 check(
   '工具图标 MC 风格',
-  toolIconStyle.swordDiamond > 120 && toolIconStyle.pickIron > 120,
-  `剑钻石蓝像素 ${toolIconStyle.swordDiamond},镐铁灰像素 ${toolIconStyle.pickIron}`,
+  toolIconStyle.swordIron > 120 &&
+    toolIconStyle.swordGuard > 35 &&
+    toolIconStyle.swordWood > 20 &&
+    toolIconStyle.pickDiamond > 120 &&
+    toolIconStyle.pickHeadLeft > 60 &&
+    toolIconStyle.pickTipDown > 45 &&
+    toolIconStyle.pickWood > 45,
+  `铁剑刃/护手/木柄 ${toolIconStyle.swordIron}/${toolIconStyle.swordGuard}/${toolIconStyle.swordWood},钻石镐头/左头/下尖/木柄 ${toolIconStyle.pickDiamond}/${toolIconStyle.pickHeadLeft}/${toolIconStyle.pickTipDown}/${toolIconStyle.pickWood}`,
 );
 await page.click('#inv-grid .inv-slot[title="砖块"]');
 await page.waitForTimeout(250);
