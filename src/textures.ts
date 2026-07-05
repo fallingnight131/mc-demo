@@ -887,8 +887,12 @@ export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: Mob
 export interface SteveSkin {
   head: THREE.CanvasTexture;
   face: THREE.CanvasTexture;
+  /** 全头发:头顶与后脑勺 */
+  hair: THREE.CanvasTexture;
   body: THREE.CanvasTexture;
   arm: THREE.CanvasTexture;
+  /** 全衣色:肩膀顶面 */
+  sleeve: THREE.CanvasTexture;
   leg: THREE.CanvasTexture;
 }
 
@@ -919,11 +923,15 @@ export function buildSteveTextures(): SteveSkin {
       }
     }
   };
-  // 头侧/顶:肤色 + 上半头发
+  // 头侧:肤色 + 上半头发
   const head = make((img, rng) => {
     skinTone(img, rng);
     hair(img, 6, rng);
   }, 661001);
+  // 全头发:头顶与后脑勺
+  const hairFull = make((img, rng) => {
+    hair(img, TS, rng);
+  }, 661006);
   // 脸:发际线 + 眼(白+蓝紫瞳) + 鼻影 + 嘴
   const face = make((img, rng) => {
     skinTone(img, rng);
@@ -953,6 +961,10 @@ export function buildSteveTextures(): SteveSkin {
       }
     }
   }, 661004);
+  // 全衣色:肩膀顶面
+  const sleeve = make((img, rng) => {
+    noiseFill(img, rng, [0, 152, 152], 8);
+  }, 661007);
   // 腿:靛蓝裤 + 底部灰鞋
   const leg = make((img, rng) => {
     noiseFill(img, rng, [64, 70, 158], 8);
@@ -963,7 +975,7 @@ export function buildSteveTextures(): SteveSkin {
       }
     }
   }, 661005);
-  return { head, face, body, arm, leg };
+  return { head, face, hair: hairFull, body, arm, sleeve, leg };
 }
 
 /** 柔边方形月亮:冷白色调,带几块月海暗斑 */

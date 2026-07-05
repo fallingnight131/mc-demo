@@ -211,11 +211,56 @@ const model = new PlayerModel();
 scene.add(model.group);
 let viewMode = 0; // 0=第一人称,1=第三人称背后
 
+let thirdDist = 4; // 第三人称距离,-/= 缩放
+
 function toggleView(): void {
   viewMode = viewMode === 0 ? 1 : 0;
   model.setVisible(viewMode === 1);
   hud.setHandVisible(viewMode === 0);
-  hud.toast(viewMode === 1 ? '第三人称视角' : '第一人称视角');
+  // MC 式:第三人称没有准星(否则永远指着后脑勺)
+  document.getElementById('crosshair')!.style.display = viewMode === 0 ? '' : 'none';
+  hud.toast(viewMode === 1 ? '第三人称视角(-/= 缩放)' : '第一人称视角');
+}
+
+// --- 右手持有物:方块小模型 / 工具图标面片,随选中槽位切换 ---
+const heldMat = new THREE.MeshBasicMaterial({ map: textures.atlas, alphaTest: 0.5 });
+const heldToolMats: THREE.MeshBasicMaterial[] = [];
+const heldCache = new Map<number, THREE.Object3D>();
+let heldShown = -1;
+
+function heldObjectFor(id: number): THREE.Object3D {
+  let obj = heldCache.get(id);
+  if (obj) return obj;
+  if (isTool(id)) {
+    const tex = new THREE.CanvasTexture(textures.toolIconFor(id));
+    tex.magFilter = THREE.NearestFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      alphaTest: 0.4,
+      side: THREE.DoubleSide,
+    });
+    heldToolMats.push(mat);
+    // 包一层 Group:内层做斜伸姿态,外层位置由 setHeld 控制
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.46), mat);
+    plane.rotation.set(-0.35, 0.95, -0.6); // 从身侧斜伸出,背后视角也能看到
+    plane.position.set(0.1, -0.06, -0.08);
+    obj = new THREE.Group();
+    obj.add(plane);
+  } else {
+    obj = new THREE.Mesh(buildBlockGeometry(id, 0.26), heldMat);
+    obj.rotation.y = 0.5;
+  }
+  heldCache.set(id, obj);
+  return obj;
+}
+
+function syncHeld(): void {
+  const want = viewMode === 0 ? -1 : hotbar[selectedSlot];
+  if (want === heldShown) return;
+  heldShown = want;
+  model.setHeld(want < 0 ? null : heldObjectFor(want));
 }
 
 /** 挥手反馈:HUD 手持图标 + 第三人称右臂 */
@@ -654,6 +699,11 @@ input.onKey = (code) => {
     hud.toast(m ? '音效:关' : '音效:开');
   } else if (code === 'F5') {
     if (input.locked) toggleView();
+  } else if (code === 'Minus' || code === 'Equal') {
+    if (input.locked && viewMode === 1) {
+      thirdDist = Math.max(2, Math.min(8, thirdDist + (code === 'Minus' ? 0.5 : -0.5)));
+      hud.toast(`视角距离 ${thirdDist.toFixed(1)}`);
+    }
   } else if (code === 'KeyE') {
     if (inventoryOpen) closeInventory(true);
     else if (input.locked) openInventory();
@@ -739,6 +789,8 @@ function frame(now: number): void {
   particles.setBrightness(dn.brightness);
   mobs.setBrightness(dn.brightness);
   model.setBrightness(dn.brightness);
+  heldMat.color.setScalar(dn.brightness);
+  for (const m of heldToolMats) m.color.setScalar(dn.brightness);
   hud.setHandBrightness(Math.pow(dn.brightness, 0.45));
 
   // 周期性存档(有改动才写)
@@ -759,9 +811,13 @@ function frame(now: number): void {
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
   if (viewMode === 1) {
-    // 第三人称:沿视线反方向拉开,撞方块则回缩
+    // 第三人称:枢轴抬到眼上方(人物略低于画面中心,不挡视线),
+    // 沿视线反方向拉开 thirdDist,撞方块则回缩
+    const pivot = player.eyePos(eyeVec);
+    pivot.y += 0.3;
+    camera.position.y += 0.3;
     const back = lookDir(dirVec).multiplyScalar(-1);
-    const d = thirdPersonDist(world, player.eyePos(eyeVec), back, 4);
+    const d = thirdPersonDist(world, pivot, back, thirdDist);
     camera.position.addScaledVector(back, d);
   }
 
@@ -915,6 +971,7 @@ function frame(now: number): void {
   }
 
   // 玩家模型姿态(仅第三人称可见,更新本身很便宜)
+  syncHeld();
   model.update(
     dt,
     player.pos,
@@ -980,6 +1037,7 @@ if (new URLSearchParams(location.search).has('test')) {
     view: () => viewMode,
     toggleView: () => toggleView(),
     modelVisible: () => model.group.visible,
+    heldId: () => heldShown,
     mobs: {
       count: () => mobs.count,
       list: () => mobs.debugList(),

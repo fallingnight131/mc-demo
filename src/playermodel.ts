@@ -37,16 +37,19 @@ export class PlayerModel {
   private phase = 0;
   private punchT = 0;
   private displayYaw = 0;
+  private held: THREE.Object3D | null = null;
 
   constructor() {
     const skin = buildSteveTextures();
     const mat = (tex: THREE.Texture) => new THREE.MeshBasicMaterial({ map: tex });
     const headMat = mat(skin.head);
     const faceMat = mat(skin.face);
+    const hairMat = mat(skin.hair);
     const bodyMat = mat(skin.body);
     const armMat = mat(skin.arm);
+    const sleeveMat = mat(skin.sleeve);
     const legMat = mat(skin.leg);
-    this.mats = [headMat, faceMat, bodyMat, armMat, legMat];
+    this.mats = [headMat, faceMat, hairMat, bodyMat, armMat, sleeveMat, legMat];
 
     // 比例按 MC:总高约 1.86(碰撞箱 1.8)。前方为局部 -z。
     const box = (w: number, h: number, d: number, pivotTop = false) => {
@@ -54,13 +57,13 @@ export class PlayerModel {
       if (pivotTop) g.translate(0, -h / 2, 0); // 绕顶端摆动(肩/胯)
       return g;
     };
-    // 头(脸在 -z 面)
+    // 头:脸 -z,头顶与后脑勺全头发,两侧上半头发
     this.head = new THREE.Mesh(box(0.46, 0.46, 0.46), [
       headMat,
       headMat,
+      hairMat,
       headMat,
-      headMat,
-      headMat,
+      hairMat,
       faceMat,
     ]);
     this.head.position.y = 1.63;
@@ -69,7 +72,7 @@ export class PlayerModel {
     body.position.y = 1.05;
     this.group.add(body);
     const mkLimb = (
-      texMat: THREE.MeshBasicMaterial,
+      texMat: THREE.MeshBasicMaterial | THREE.MeshBasicMaterial[],
       w: number,
       len: number,
       x: number,
@@ -80,11 +83,24 @@ export class PlayerModel {
       this.group.add(m);
       return m;
     };
-    this.armL = mkLimb(armMat, 0.22, 0.68, -0.35, 1.38);
-    this.armR = mkLimb(armMat, 0.22, 0.68, 0.35, 1.38);
+    // 臂顶面(肩膀)用衣色
+    const armMats = [armMat, armMat, sleeveMat, armMat, armMat, armMat];
+    this.armL = mkLimb(armMats, 0.22, 0.68, -0.35, 1.38);
+    this.armR = mkLimb(armMats, 0.22, 0.68, 0.35, 1.38);
     this.legL = mkLimb(legMat, 0.22, 0.7, -0.12, 0.7);
     this.legR = mkLimb(legMat, 0.22, 0.7, 0.12, 0.7);
     this.group.visible = false;
+  }
+
+  /** 右手持有物(方块小模型或工具图标面片),null 清空 */
+  setHeld(obj: THREE.Object3D | null): void {
+    if (this.held) this.armR.remove(this.held);
+    this.held = obj;
+    if (obj) {
+      // 挂在右臂末端略靠前,随挥臂一起动
+      obj.position.set(0.02, -0.62, -0.2);
+      this.armR.add(obj);
+    }
   }
 
   /** 放置/挖掘/攻击时挥一下右臂 */

@@ -1015,16 +1015,49 @@ await page.waitForTimeout(450); // 行走中抓拍摆腿
 await page.screenshot({ path: `${OUT}/16-third-person.png` });
 await page.keyboard.up('KeyW');
 await page.waitForTimeout(200);
+// 第三人称细节:准星隐藏、手持物跟随槽位、-/= 缩放
+const tpDetail = await page.evaluate(() => ({
+  crosshairHidden: document.getElementById('crosshair').style.display === 'none',
+  held: window.__game.heldId(),
+}));
+await page.keyboard.press('Digit3'); // 石头
+await page.waitForTimeout(150);
+const heldStone = await page.evaluate(() => window.__game.heldId());
+// 现场装剑(清档测试重置过快捷栏),装完重新对准
+await page.keyboard.press('Digit8');
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(250);
+await page.click('#inv-grid .inv-slot[title="剑"]');
+await page.waitForTimeout(250);
+await page.evaluate(() => {
+  const g = window.__game;
+  g.player.yaw = 0;
+  g.player.pitch = -0.15;
+});
+await page.waitForTimeout(150);
+const heldSword = await page.evaluate(() => window.__game.heldId());
+await page.keyboard.press('Minus');
+await page.keyboard.press('Minus');
+await page.waitForTimeout(120);
+await page.screenshot({ path: `${OUT}/16b-third-person-sword.png` });
+await page.keyboard.press('Digit1');
 await page.keyboard.press('F5');
 await page.waitForTimeout(200);
 const v2 = await page.evaluate(() => ({
   view: window.__game.view(),
   model: window.__game.modelVisible(),
+  crosshairBack: document.getElementById('crosshair').style.display !== 'none',
+  held: window.__game.heldId(),
 }));
 check(
   'F5 第三人称视角',
   v0.view === 0 && !v0.model && v1.view === 1 && v1.model && v2.view === 0 && !v2.model,
   `视角 ${v0.view}→${v1.view}→${v2.view},模型可见 ${v0.model}→${v1.model}→${v2.model}`,
+);
+check(
+  '第三人称:准星隐藏与手持物',
+  tpDetail.crosshairHidden && heldStone === 3 && heldSword === 102 && v2.crosshairBack && v2.held === -1,
+  `准星隐藏 ${tpDetail.crosshairHidden},手持 石头=${heldStone} 剑=${heldSword},切回后准星恢复 ${v2.crosshairBack} 手持清空 ${v2.held === -1}`,
 );
 
 // --- 环顾远景 ---
