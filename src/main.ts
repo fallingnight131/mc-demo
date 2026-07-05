@@ -67,6 +67,21 @@ const solidMat = new THREE.MeshBasicMaterial({
   vertexColors: true,
   alphaTest: 0.5, // 玻璃等镂空纹理
 });
+// 块光照:顶点属性 aLight(0..1),最终亮度 = max(昼夜, 块光)。
+// 昼夜不再乘在材质 color 上,而是走 uniform,火把夜里才能保持亮。
+const dayUniform = { value: 1 };
+solidMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uDay = dayUniform;
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float aLight;\nvarying float vLight;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLight = aLight;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform float uDay;\nvarying float vLight;')
+    .replace(
+      '#include <color_fragment>',
+      '#include <color_fragment>\n  diffuseColor.rgb *= max(uDay, vLight);',
+    );
+};
 const waterTex = buildWaterTexture();
 const waterMat = new THREE.MeshBasicMaterial({
   map: waterTex,
@@ -246,6 +261,19 @@ function heldObjectFor(id: number): THREE.Object3D {
     plane.position.set(0.1, -0.06, -0.08);
     obj = new THREE.Group();
     obj.add(plane);
+  } else if (BLOCK_DEFS[id].shape === 'cross') {
+    const tex = new THREE.CanvasTexture(textures.iconFor(id));
+    tex.magFilter = THREE.NearestFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      alphaTest: 0.4,
+      side: THREE.DoubleSide,
+    });
+    heldToolMats.push(mat);
+    obj = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.4), mat);
+    obj.rotation.set(-0.2, 0.7, -0.3);
   } else {
     obj = new THREE.Mesh(buildBlockGeometry(id, 0.26), heldMat);
     obj.rotation.y = 0.5;
@@ -547,6 +575,8 @@ function placeAt(hit: RayHit | null): void {
   const cur = world.getBlock(tx, ty, tz);
   if (cur !== Block.Air && !isWater(cur)) return;
   if (player.intersectsBlock(tx, ty, tz)) return;
+  // 火把等只能放在实体方块顶面
+  if (BLOCK_DEFS[id].needsGround && !world.isSolid(tx, ty - 1, tz)) return;
   // 南瓜按放置视角转脸朝向玩家
   const placed = id === Block.Pumpkin ? pumpkinVariant(player.yaw) : id;
   world.setBlock(tx, ty, tz, placed);
@@ -781,7 +811,7 @@ function frame(now: number): void {
   }
   const dn = computeDayNight(timeOfDay);
   worldBrightness = dn.brightness;
-  solidMat.color.setScalar(dn.brightness);
+  dayUniform.value = dn.brightness; // 方块亮度走 shader 的 max(昼夜, 块光)
   waterMat.color.setScalar(dn.brightness);
   drops.setBrightness(dn.brightness);
   particles.setBrightness(dn.brightness);

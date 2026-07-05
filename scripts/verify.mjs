@@ -976,6 +976,87 @@ check(
 await page.evaluate(() => window.__game.setTime(0.25)); // 回到白天
 await page.waitForTimeout(250);
 
+// --- 火把与萤石:夜里放置照亮周围,挖掉光照归零 ---
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 7;
+  const z = Math.floor(s.z) - 6;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.65;
+  g.setTime(0.75); // 午夜
+});
+await page.keyboard.press('Digit5');
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(250);
+await page.click('#inv-grid .inv-slot[title="火把"]');
+await page.waitForTimeout(250);
+await page.evaluate(() => {
+  const g = window.__game;
+  g.player.yaw = 0;
+  g.player.pitch = -0.65;
+});
+await page.waitForTimeout(120);
+await page.mouse.down(); // 点按放火把
+await page.waitForTimeout(60);
+await page.mouse.up();
+await page.waitForTimeout(300);
+const torchInfo = await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  for (let dy = 1; dy >= -1; dy--) {
+    for (let dx = -4; dx <= 4; dx++) {
+      for (let dz = -4; dz <= 4; dz++) {
+        const x = Math.floor(p.x) + dx;
+        const y = Math.floor(p.y) + dy;
+        const z = Math.floor(p.z) + dz;
+        if (g.world.getBlock(x, y, z) === 33) {
+          return {
+            src: g.world.lights.lightAt(x, y, z),
+            near: g.world.lights.lightAt(x + 1, y, z),
+            sources: g.world.lights.sourceCount,
+            x, y, z,
+          };
+        }
+      }
+    }
+  }
+  return null;
+});
+await page.screenshot({ path: `${OUT}/18-torch-night.png` });
+let torchOk = false;
+if (torchInfo) {
+  // 挖掉火把(硬度 0.1,长按 0.5s)
+  await page.mouse.down();
+  await page.waitForTimeout(500);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(
+    ([x, y, z]) => ({
+      block: window.__game.world.getBlock(x, y, z),
+      light: window.__game.world.lights.lightAt(x, y, z),
+      sources: window.__game.world.lights.sourceCount,
+    }),
+    [torchInfo.x, torchInfo.y, torchInfo.z],
+  );
+  torchOk =
+    torchInfo.src === 14 && torchInfo.near === 13 && torchInfo.sources === 1 &&
+    after.block === 0 && after.light === 0 && after.sources === 0;
+  check(
+    '火把:夜间光照与挖除',
+    torchOk,
+    `放置后源=${torchInfo.src} 邻=${torchInfo.near} 光源数=${torchInfo.sources};挖除后 方块=${after.block} 光=${after.light} 光源数=${after.sources}`,
+  );
+} else {
+  check('火把:夜间光照与挖除', false, '未能放置火把');
+}
+await page.evaluate(() => window.__game.setTime(0.25));
+await page.keyboard.press('Digit1');
+await page.waitForTimeout(200);
+
 // --- 长按 T:时间连续快进(替代原先的跳跃式) ---
 const tHold0 = await page.evaluate(() => window.__game.env().time);
 await page.keyboard.down('KeyT');

@@ -55,6 +55,7 @@ class GeoArrays {
   positions: number[] = [];
   colors: number[] = [];
   uvs: number[] = [];
+  lights: number[] = []; // 每顶点块光(0..1),着色器中 max(昼夜, 块光)
   indices: number[] = [];
 
   toGeometry(): THREE.BufferGeometry | null {
@@ -63,6 +64,7 @@ class GeoArrays {
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
+    g.setAttribute('aLight', new THREE.Float32BufferAttribute(this.lights, 1));
     g.setIndex(this.indices);
     g.computeBoundingSphere();
     return g;
@@ -81,6 +83,7 @@ export interface ChunkGeometry {
 export function buildChunkGeometry(
   chunk: Chunk,
   getWorldBlock: (x: number, y: number, z: number) => number,
+  getLight: (x: number, y: number, z: number) => number = () => 0,
 ): ChunkGeometry {
   const ox = chunk.cx * CS;
   const oz = chunk.cz * CS;
@@ -105,6 +108,37 @@ export function buildChunkGeometry(
         const tiles = def.tiles!;
         const blockIsWater = isWater(id);
         const target = blockIsWater ? water : solid;
+
+        // 十字面片(火把):两张对角面各双面,取本格光值,不参与面剔除
+        if (def.shape === 'cross') {
+          const { u0, v0, u1, v1 } = tileUV(tiles[0]);
+          const lv = Math.max(getLight(ox + lx, y, oz + lz) / 15, 0.9); // 火把自体常亮
+          const quads: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
+            [[0.15, 0.15], [0.85, 0.85]],
+            [[0.15, 0.85], [0.85, 0.15]],
+          ];
+          for (const [[x0, z0], [x1, z1]] of quads) {
+            for (const flip of [false, true]) {
+              const base = solid.positions.length / 3;
+              const pa: [number, number][] = flip
+                ? [[x1, z1], [x0, z0]]
+                : [[x0, z0], [x1, z1]];
+              solid.positions.push(
+                ox + lx + pa[0][0], y, oz + lz + pa[0][1],
+                ox + lx + pa[1][0], y, oz + lz + pa[1][1],
+                ox + lx + pa[1][0], y + 1, oz + lz + pa[1][1],
+                ox + lx + pa[0][0], y + 1, oz + lz + pa[0][1],
+              );
+              for (let i = 0; i < 4; i++) {
+                solid.colors.push(1, 1, 1);
+                solid.lights.push(lv);
+              }
+              solid.uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
+              solid.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+            }
+          }
+          continue;
+        }
         // 水面按水位下沉;若上方也是水(瀑布柱)则保持满格不留缝
         const topDrop =
           blockIsWater && !isWater(blockAt(lx, y + 1, lz))
@@ -123,6 +157,9 @@ export function buildChunkGeometry(
             : tileUV(tiles[f.tileIndex]);
           const base = target.positions.length / 3;
 
+          // 面外侧格子的块光,烘进顶点
+          const faceLight =
+            getLight(ox + lx + f.dx, y + f.dy, oz + lz + f.dz) / 15;
           for (let i = 0; i < 4; i++) {
             const c = f.corners[i];
             // 顶部顶点统一下沉,侧面随之变矮,避免侧壁高出水面
@@ -130,6 +167,7 @@ export function buildChunkGeometry(
             target.positions.push(ox + lx + c[0], py, oz + lz + c[2]);
             const b = f.brightness;
             target.colors.push(b, b, b);
+            target.lights.push(faceLight * f.brightness);
           }
           target.uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
           target.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);

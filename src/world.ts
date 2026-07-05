@@ -1,6 +1,7 @@
 // 世界:区块管理、按需流式生成/网格化、方块读写、体素射线检测
 import * as THREE from 'three';
-import { Block, BLOCK_DEFS, isWater } from './blocks';
+import { Block, BLOCK_DEFS, isWater, lightLevel } from './blocks';
+import { Lights } from './lights';
 import { buildChunkGeometry, Chunk } from './chunk';
 import {
   CHUNK_SIZE,
@@ -33,6 +34,9 @@ export class World {
   readonly gen: Generator;
   readonly group = new THREE.Group();
   readonly water = new WaterSim(this);
+  /** 块光照(火把/萤石),不透明方块遮挡 */
+  readonly lights = new Lights((x, y, z) => BLOCK_DEFS[this.getBlock(x, y, z)].opaque);
+  private lightDirty = false;
   /** 玩家编辑覆盖层:区块卸载重生成后回放,亦用于存档 */
   private readonly edits = new Map<string, Map<number, number>>();
   editsDirty = false;
@@ -118,6 +122,17 @@ export class World {
   loadEdits(data: EditData): void {
     for (const [k, list] of Object.entries(data)) {
       this.edits.set(k, new Map(list));
+      // 恢复玩家放置的光源(全局登记,与区块加载无关)
+      const [cx, cz] = k.split(',').map(Number);
+      for (const [idx, id] of list) {
+        if (lightLevel(id) > 0) {
+          const lx = idx % CS;
+          const lz = Math.floor(idx / CS) % CS;
+          const y = Math.floor(idx / (CS * CS));
+          this.lights.addSource(cx * CS + lx, y, cz * CS + lz, lightLevel(id));
+          this.lightDirty = true;
+        }
+      }
     }
   }
 
@@ -130,9 +145,26 @@ export class World {
     if (!c) return false;
     const lx = x - cx * CS;
     const lz = z - cz * CS;
-    if (c.get(lx, y, lz) === id) return false;
+    const old = c.get(lx, y, lz);
+    if (old === id) return false;
     c.set(lx, y, lz, id);
     dirty.add(c);
+    // 光照登记:光源增删,或不透明性变化且在某个光源范围内
+    if (lightLevel(old) > 0) {
+      this.lights.removeSource(x, y, z);
+      this.lightDirty = true;
+    }
+    if (lightLevel(id) > 0) {
+      this.lights.addSource(x, y, z, lightLevel(id));
+      this.lightDirty = true;
+    }
+    if (
+      !this.lightDirty &&
+      BLOCK_DEFS[old].opaque !== BLOCK_DEFS[id].opaque &&
+      this.lights.affectedBy(x, y, z)
+    ) {
+      this.lightDirty = true;
+    }
     // 边界方块同时重建相邻区块,消除暴露面
     if (lx === 0) this.addIfPresent(cx - 1, cz, dirty);
     if (lx === CS - 1) this.addIfPresent(cx + 1, cz, dirty);
@@ -142,8 +174,26 @@ export class World {
   }
 
   remeshChunks(dirty: Set<Chunk>): void {
+    this.flushLight(dirty);
     for (const c of dirty) {
       if (c.meshed) this.rebuildMesh(c);
+    }
+  }
+
+  /** 光照重算并把受影响格子的区块并入待重建集合 */
+  private flushLight(dirty: Set<Chunk>): void {
+    if (!this.lightDirty) return;
+    this.lightDirty = false;
+    for (const [x, , z] of this.lights.recompute()) {
+      const cx = Math.floor(x / CS);
+      const cz = Math.floor(z / CS);
+      this.addIfPresent(cx, cz, dirty);
+      const lx = x - cx * CS;
+      const lz = z - cz * CS;
+      if (lx === 0) this.addIfPresent(cx - 1, cz, dirty);
+      if (lx === CS - 1) this.addIfPresent(cx + 1, cz, dirty);
+      if (lz === 0) this.addIfPresent(cx, cz - 1, dirty);
+      if (lz === CS - 1) this.addIfPresent(cx, cz + 1, dirty);
     }
   }
 
@@ -234,7 +284,11 @@ export class World {
 
   private rebuildMesh(c: Chunk): void {
     this.disposeMeshes(c);
-    const geo = buildChunkGeometry(c, (x, y, z) => this.getBlock(x, y, z));
+    const geo = buildChunkGeometry(
+      c,
+      (x, y, z) => this.getBlock(x, y, z),
+      (x, y, z) => this.lights.lightAt(x, y, z),
+    );
     if (geo.solid) {
       c.solidMesh = new THREE.Mesh(geo.solid, this.solidMat);
       this.group.add(c.solidMesh);
@@ -305,7 +359,7 @@ export class World {
     }
   }
 
-  /** Amanatides & Woo 体素遍历;命中第一个固体方块(忽略水) */
+  /** Amanatides & Woo 体素遍历;命中第一个可交互方块(忽略空气与水,火把可命中) */
   raycast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number): RayHit | null {
     let x = Math.floor(origin.x);
     let y = Math.floor(origin.y);
@@ -353,7 +407,8 @@ export class World {
       }
       if (t > maxDist) return null;
       const id = this.getBlock(x, y, z);
-      if (BLOCK_DEFS[id].solid) {
+      // 可交互即命中:固体方块 + 非碰撞的火把等(忽略空气与水)
+      if (id !== Block.Air && !isWater(id)) {
         return { x, y, z, nx, ny, nz, id };
       }
     }

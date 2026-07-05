@@ -12,7 +12,8 @@ describe('blocks', () => {
       expect(def, `id=${id}`).toBeDefined();
       expect(def.tiles, `${def.name} 纹理`).not.toBeNull();
       expect(def.tiles!.length).toBe(6);
-      expect(def.solid, `${def.name} 碰撞`).toBe(true);
+      // 十字面片方块(火把)不参与碰撞,其余可放置方块必须有碰撞
+      expect(def.solid || def.shape === 'cross', `${def.name} 碰撞`).toBe(true);
       expect(def.hardness).toBeGreaterThan(0);
       expect(Number.isFinite(def.hardness), `${def.name} 可挖掘`).toBe(true);
     }

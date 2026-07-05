@@ -1,7 +1,7 @@
 // 方块与纹理图集定义(纯数据,不依赖 DOM)
 
 export const ATLAS_COLS = 8;
-export const ATLAS_ROWS = 4;
+export const ATLAS_ROWS = 5;
 export const TILE_PX = 16;
 
 // 图集中的纹理格索引
@@ -38,6 +38,8 @@ export const Tile = {
   IronBlock: 29,
   GoldBlock: 30,
   DiamondBlock: 31,
+  Torch: 32,
+  Glowstone: 33,
 } as const;
 
 export const Block = {
@@ -76,6 +78,8 @@ export const Block = {
   PumpkinE: 30, // 脸朝 +x
   PumpkinN: 31, // 脸朝 -z
   PumpkinW: 32, // 脸朝 -x
+  Torch: 33, // 火把:十字面片,光源 14
+  Glowstone: 34, // 萤石:光源 15
 } as const;
 
 export interface BlockDef {
@@ -85,6 +89,12 @@ export interface BlockDef {
   solid: boolean; // 是否参与碰撞
   opaque: boolean; // 是否完全遮挡相邻面
   hardness: number; // 徒手挖掘耗时(秒),Infinity 表示不可破坏
+  /** 发光等级(0..15),火把 14/萤石 15 */
+  light?: number;
+  /** 渲染形状:cross = 十字交叉面片(火把等) */
+  shape?: 'cross';
+  /** 只能放在实体方块顶面(火把) */
+  needsGround?: boolean;
 }
 
 const T = Tile;
@@ -125,7 +135,14 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '南瓜', tiles: [T.PumpkinFace, T.PumpkinSide, T.PumpkinTop, T.PumpkinTop, T.PumpkinSide, T.PumpkinSide], solid: true, opaque: true, hardness: 0.5 },
   { name: '南瓜', tiles: [T.PumpkinSide, T.PumpkinSide, T.PumpkinTop, T.PumpkinTop, T.PumpkinSide, T.PumpkinFace], solid: true, opaque: true, hardness: 0.5 },
   { name: '南瓜', tiles: [T.PumpkinSide, T.PumpkinFace, T.PumpkinTop, T.PumpkinTop, T.PumpkinSide, T.PumpkinSide], solid: true, opaque: true, hardness: 0.5 },
+  { name: '火把', tiles: [T.Torch, T.Torch, T.Torch, T.Torch, T.Torch, T.Torch], solid: false, opaque: false, hardness: 0.1, light: 14, shape: 'cross', needsGround: true },
+  { name: '萤石', tiles: [T.Glowstone, T.Glowstone, T.Glowstone, T.Glowstone, T.Glowstone, T.Glowstone], solid: true, opaque: true, hardness: 0.4, light: 15 },
 ];
+
+/** 方块发光等级(0..15) */
+export function lightLevel(id: number): number {
+  return BLOCK_DEFS[id]?.light ?? 0;
+}
 
 /** 是否为水(水源或任意等级流水) */
 export function isWater(id: number): boolean {
@@ -169,6 +186,8 @@ export const PLACEABLE: number[] = [
   Block.IronBlock,
   Block.GoldBlock,
   Block.DiamondBlock,
+  Block.Torch,
+  Block.Glowstone,
 ];
 
 /** 按放置者视角选南瓜朝向:脸转向玩家 */

@@ -232,6 +232,52 @@ const painters: Record<number, Painter> = {
     }
     void rng;
   },
+  [Tile.Torch]: (img, rng) => {
+    // 透明底 + 中央木杆 + 顶部火焰
+    for (let y = 0; y < TS; y++) {
+      for (let x = 0; x < TS; x++) {
+        px(img, x, y, 0, 0, 0, 0);
+      }
+    }
+    for (let y = 6; y < TS; y++) {
+      const v = (rng() * 2 - 1) * 8;
+      px(img, 7, y, clamp255(142 + v), clamp255(106 + v), clamp255(62 + v));
+      px(img, 8, y, clamp255(120 + v), clamp255(88 + v), clamp255(50 + v));
+    }
+    // 火焰:外橙内白黄
+    for (let y = 3; y <= 5; y++) {
+      for (let x = 6; x <= 9; x++) {
+        px(img, x, y, 255, 168, 32);
+      }
+    }
+    px(img, 7, 3, 255, 236, 150);
+    px(img, 8, 3, 255, 236, 150);
+    px(img, 7, 4, 255, 246, 190);
+    px(img, 8, 4, 255, 246, 190);
+    px(img, 6, 2, 255, 120, 24, 200);
+    px(img, 9, 2, 255, 120, 24, 200);
+    px(img, 7, 2, 255, 200, 80);
+    px(img, 8, 2, 255, 200, 80);
+  },
+  [Tile.Glowstone]: (img, rng) => {
+    // 暖黄底 + 更亮的斑块 + 深色缝隙,类似 MC 萤石
+    noiseFill(img, rng, [212, 172, 96], 10);
+    for (let i = 0; i < 6; i++) {
+      const cx = (rng() * (TS - 4)) | 0;
+      const cy = (rng() * (TS - 4)) | 0;
+      for (let dy = 0; dy < 3; dy++) {
+        for (let dx = 0; dx < 3; dx++) {
+          if (rng() < 0.85) {
+            const v = (rng() * 2 - 1) * 10;
+            px(img, cx + dx, cy + dy, clamp255(252 + v), clamp255(224 + v), clamp255(140 + v));
+          }
+        }
+      }
+    }
+    for (let i = 0; i < 14; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 156, 118, 62);
+    }
+  },
   [Tile.Sandstone]: (img, rng) => {
     // 水平层理的砂岩
     for (let y = 0; y < TS; y++) {
@@ -407,6 +453,29 @@ export function buildTextures(): GameTextures {
   const iconFor = (blockId: number): HTMLCanvasElement => {
     const cached = iconCache.get(blockId);
     if (cached) return cached;
+
+    // 十字面片方块(火把):平面像素图,不画等距立方
+    if (BLOCK_DEFS[blockId].shape === 'cross') {
+      const tile = BLOCK_DEFS[blockId].tiles![0];
+      const flat = document.createElement('canvas');
+      flat.width = 48;
+      flat.height = 48;
+      const fc = flat.getContext('2d')!;
+      fc.imageSmoothingEnabled = false;
+      fc.drawImage(
+        canvas,
+        (tile % ATLAS_COLS) * TS,
+        Math.floor(tile / ATLAS_COLS) * TS,
+        TS,
+        TS,
+        0,
+        0,
+        48,
+        48,
+      );
+      iconCache.set(blockId, flat);
+      return flat;
+    }
 
     const icon = document.createElement('canvas');
     icon.width = 48;
