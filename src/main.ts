@@ -217,8 +217,6 @@ function toggleView(): void {
   viewMode = viewMode === 0 ? 1 : 0;
   model.setVisible(viewMode === 1);
   hud.setHandVisible(viewMode === 0);
-  // MC 式:第三人称没有准星(否则永远指着后脑勺)
-  document.getElementById('crosshair')!.style.display = viewMode === 0 ? '' : 'none';
   hud.toast(viewMode === 1 ? '第三人称视角(-/= 缩放)' : '第一人称视角');
 }
 
@@ -811,11 +809,11 @@ function frame(now: number): void {
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
   if (viewMode === 1) {
-    // 第三人称:枢轴抬到眼上方(人物略低于画面中心,不挡视线),
-    // 沿视线反方向拉开 thirdDist,撞方块则回缩
+    // 第三人称:枢轴抬到眼上方 0.62 格 —— 准星保持屏幕中央,
+    // 人物头部明显低于准星不重合;沿视线反方向拉开,撞方块回缩
     const pivot = player.eyePos(eyeVec);
-    pivot.y += 0.3;
-    camera.position.y += 0.3;
+    pivot.y += 0.62;
+    camera.position.y += 0.62;
     const back = lookDir(dirVec).multiplyScalar(-1);
     const d = thirdPersonDist(world, pivot, back, thirdDist);
     camera.position.addScaledVector(back, d);

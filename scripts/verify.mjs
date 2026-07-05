@@ -1015,9 +1015,9 @@ await page.waitForTimeout(450); // 行走中抓拍摆腿
 await page.screenshot({ path: `${OUT}/16-third-person.png` });
 await page.keyboard.up('KeyW');
 await page.waitForTimeout(200);
-// 第三人称细节:准星隐藏、手持物跟随槽位、-/= 缩放
+// 第三人称细节:准星保留在屏幕中央、手持物跟随槽位、-/= 缩放
 const tpDetail = await page.evaluate(() => ({
-  crosshairHidden: document.getElementById('crosshair').style.display === 'none',
+  crosshairVisible: document.getElementById('crosshair').style.display !== 'none',
   held: window.__game.heldId(),
 }));
 await page.keyboard.press('Digit3'); // 石头
@@ -1046,7 +1046,7 @@ await page.waitForTimeout(200);
 const v2 = await page.evaluate(() => ({
   view: window.__game.view(),
   model: window.__game.modelVisible(),
-  crosshairBack: document.getElementById('crosshair').style.display !== 'none',
+  crosshair: document.getElementById('crosshair').style.display !== 'none',
   held: window.__game.heldId(),
 }));
 check(
@@ -1055,9 +1055,9 @@ check(
   `视角 ${v0.view}→${v1.view}→${v2.view},模型可见 ${v0.model}→${v1.model}→${v2.model}`,
 );
 check(
-  '第三人称:准星隐藏与手持物',
-  tpDetail.crosshairHidden && heldStone === 3 && heldSword === 102 && v2.crosshairBack && v2.held === -1,
-  `准星隐藏 ${tpDetail.crosshairHidden},手持 石头=${heldStone} 剑=${heldSword},切回后准星恢复 ${v2.crosshairBack} 手持清空 ${v2.held === -1}`,
+  '第三人称:准星保留与手持物',
+  tpDetail.crosshairVisible && heldStone === 3 && heldSword === 102 && v2.crosshair && v2.held === -1,
+  `第三人称准星可见 ${tpDetail.crosshairVisible},手持 石头=${heldStone} 剑=${heldSword},切回后手持清空 ${v2.held === -1}`,
 );
 
 // --- 环顾远景 ---

@@ -889,6 +889,8 @@ export interface SteveSkin {
   face: THREE.CanvasTexture;
   /** 全头发:头顶与后脑勺 */
   hair: THREE.CanvasTexture;
+  /** 纯肤色:头底(下巴/脖子) */
+  skin: THREE.CanvasTexture;
   body: THREE.CanvasTexture;
   arm: THREE.CanvasTexture;
   /** 全衣色:肩膀顶面 */
@@ -932,19 +934,41 @@ export function buildSteveTextures(): SteveSkin {
   const hairFull = make((img, rng) => {
     hair(img, TS, rng);
   }, 661006);
-  // 脸:发际线 + 眼(白+蓝紫瞳) + 鼻影 + 嘴
+  // 纯肤色:头底
+  const skinPlain = make((img, rng) => {
+    skinTone(img, rng);
+  }, 661008);
+  // 脸:按原版史蒂夫 8px 布局 ×2 —— 刘海+鬓角、眼白在外瞳在内、
+  // 居中鼻影、深棕嘴
   const face = make((img, rng) => {
     skinTone(img, rng);
-    hair(img, 4, rng);
-    for (const ox of [3, 9]) {
-      px(img, ox, 7, 246, 246, 246);
-      px(img, ox + 1, 7, 78, 62, 150);
-      px(img, ox, 8, 246, 246, 246);
-      px(img, ox + 1, 8, 78, 62, 150);
+    hair(img, 4, rng); // 刘海
+    // 鬓角:两侧头发向下延伸
+    for (let y = 4; y <= 6; y++) {
+      for (const x of [0, 1, 14, 15]) {
+        const v = (rng() * 2 - 1) * 6;
+        px(img, x, y, clamp255(58 + v), clamp255(40 + v), clamp255(26 + v));
+      }
     }
-    px(img, 7, 9, 168, 120, 90);
-    px(img, 8, 9, 168, 120, 90);
-    for (let x = 6; x <= 9; x++) px(img, x, 12, 120, 76, 54);
+    // 眼(rows 8-9):白在外侧、蓝紫瞳在内侧(靠鼻),与原版一致
+    for (const y of [8, 9]) {
+      px(img, 2, y, 232, 232, 232);
+      px(img, 3, y, 232, 232, 232);
+      px(img, 4, y, 76, 60, 150);
+      px(img, 5, y, 76, 60, 150);
+      px(img, 10, y, 76, 60, 150);
+      px(img, 11, y, 76, 60, 150);
+      px(img, 12, y, 232, 232, 232);
+      px(img, 13, y, 232, 232, 232);
+    }
+    // 鼻影(rows 10-11 居中)
+    for (const y of [10, 11]) {
+      for (let x = 6; x <= 9; x++) px(img, x, y, 154, 106, 74);
+    }
+    // 嘴(rows 12-13 居中,深棕)
+    for (const y of [12, 13]) {
+      for (let x = 6; x <= 9; x++) px(img, x, y, 96, 62, 44);
+    }
   }, 661002);
   // 身:青色上衣
   const body = make((img, rng) => {
@@ -975,7 +999,7 @@ export function buildSteveTextures(): SteveSkin {
       }
     }
   }, 661005);
-  return { head, face, hair: hairFull, body, arm, sleeve, leg };
+  return { head, face, hair: hairFull, skin: skinPlain, body, arm, sleeve, leg };
 }
 
 /** 柔边方形月亮:冷白色调,带几块月海暗斑 */

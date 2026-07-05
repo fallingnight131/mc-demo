@@ -45,11 +45,12 @@ export class PlayerModel {
     const headMat = mat(skin.head);
     const faceMat = mat(skin.face);
     const hairMat = mat(skin.hair);
+    const skinMat = mat(skin.skin);
     const bodyMat = mat(skin.body);
     const armMat = mat(skin.arm);
     const sleeveMat = mat(skin.sleeve);
     const legMat = mat(skin.leg);
-    this.mats = [headMat, faceMat, hairMat, bodyMat, armMat, sleeveMat, legMat];
+    this.mats = [headMat, faceMat, hairMat, skinMat, bodyMat, armMat, sleeveMat, legMat];
 
     // 比例按 MC:总高约 1.86(碰撞箱 1.8)。前方为局部 -z。
     const box = (w: number, h: number, d: number, pivotTop = false) => {
@@ -57,12 +58,12 @@ export class PlayerModel {
       if (pivotTop) g.translate(0, -h / 2, 0); // 绕顶端摆动(肩/胯)
       return g;
     };
-    // 头:脸 -z,头顶与后脑勺全头发,两侧上半头发
+    // 头:脸 -z,头顶与后脑勺全头发,两侧上半头发,底面纯肤色
     this.head = new THREE.Mesh(box(0.46, 0.46, 0.46), [
       headMat,
       headMat,
       hairMat,
-      headMat,
+      skinMat,
       hairMat,
       faceMat,
     ]);
