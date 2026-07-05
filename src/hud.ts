@@ -104,6 +104,11 @@ export class HUD {
     this.hand.classList.add('punch');
   }
 
+  /** 第三人称时隐藏第一人称手持图标 */
+  setHandVisible(v: boolean): void {
+    this.hand.style.display = v ? '' : 'none';
+  }
+
   /** 手持方块随昼夜变暗(值为 CSS brightness,变化超过阈值才写样式) */
   private handBrightness = -1;
   setHandBrightness(b: number): void {

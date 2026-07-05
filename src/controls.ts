@@ -14,8 +14,8 @@ export class Input {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     document.addEventListener('keydown', (e) => {
-      if (this.locked && (e.code === 'Space' || e.code.startsWith('Arrow'))) {
-        e.preventDefault();
+      if (this.locked && (e.code === 'Space' || e.code.startsWith('Arrow') || e.code === 'F5')) {
+        e.preventDefault(); // F5 在游戏中是切换视角,不是刷新页面
       }
       const fresh = !this.keys.has(e.code);
       this.keys.add(e.code);

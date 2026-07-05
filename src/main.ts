@@ -10,6 +10,7 @@ import { ItemDrops } from './items';
 import { Mobs, type MobKind } from './mobs';
 import { Particles } from './particles';
 import { Player } from './player';
+import { PlayerModel, thirdPersonDist } from './playermodel';
 import { Sky, SKY_HORIZON } from './sky';
 import { materialOf, Sound } from './sound';
 import { isTool, Tool, TOOL_DEFS, TOOL_IDS } from './tools';
@@ -205,6 +206,24 @@ mobs.onDeath = (kind, x, y, z) => {
 };
 mobs.onVoice = (kind, dist) => sound.mobVoice(kind, Math.max(0.12, 1 - dist / 28));
 
+// --- 玩家模型(第三人称显示,F5/视角按钮切换)---
+const model = new PlayerModel();
+scene.add(model.group);
+let viewMode = 0; // 0=第一人称,1=第三人称背后
+
+function toggleView(): void {
+  viewMode = viewMode === 0 ? 1 : 0;
+  model.setVisible(viewMode === 1);
+  hud.setHandVisible(viewMode === 0);
+  hud.toast(viewMode === 1 ? '第三人称视角' : '第一人称视角');
+}
+
+/** 挥手反馈:HUD 手持图标 + 第三人称右臂 */
+function swingArm(): void {
+  hud.punchHand();
+  model.punch();
+}
+
 // --- TNT ---
 const atlasMat = new THREE.MeshBasicMaterial({ map: textures.atlas });
 const tntGeo = buildBlockGeometry(Block.TNT, 0.98);
@@ -347,6 +366,9 @@ if (touch) {
     else if (input.locked) openInventory();
   };
   touch.onTap = () => tapInteract();
+  touch.onView = () => {
+    if (input.locked) toggleView();
+  };
 }
 
 /** 进入游戏:触屏没有指针锁定,直接软锁 */
@@ -537,7 +559,7 @@ function useAt(hit: RayHit | null): void {
 /** 触屏点按:作用于十字准星指向处 —— 生物优先挨拳,否则放置/点燃 */
 function tapInteract(): void {
   if (!input.locked) return;
-  hud.punchHand();
+  swingArm();
   const origin = player.eyePos(eyeVec);
   const dir = lookDir(dirVec);
   const mhit = mobs.raycast(origin, dir, REACH);
@@ -561,7 +583,7 @@ input.onMouseDown = (button) => {
   if (button === 0) {
     leftHeld = true;
     leftDownAt = performance.now();
-    hud.punchHand();
+    swingArm();
     // 生物比方块近时优先挨拳(打中生物后松开不再触发点按放置)
     const mhit = mobs.raycast(player.eyePos(eyeVec), lookDir(dirVec), REACH);
     if (mhit) {
@@ -595,7 +617,7 @@ input.onMouseUp = (button) => {
     // 点按:未达长按阈值且没挖掉东西 → 放置
     if (leftDownAt > 0 && performance.now() - leftDownAt < TAP_MS) {
       useAt(aimHit());
-      hud.punchHand();
+      swingArm();
     }
     leftDownAt = 0;
     leftHeld = false;
@@ -630,6 +652,8 @@ input.onKey = (code) => {
       // 忽略
     }
     hud.toast(m ? '音效:关' : '音效:开');
+  } else if (code === 'F5') {
+    if (input.locked) toggleView();
   } else if (code === 'KeyE') {
     if (inventoryOpen) closeInventory(true);
     else if (input.locked) openInventory();
@@ -714,6 +738,7 @@ function frame(now: number): void {
   drops.setBrightness(dn.brightness);
   particles.setBrightness(dn.brightness);
   mobs.setBrightness(dn.brightness);
+  model.setBrightness(dn.brightness);
   hud.setHandBrightness(Math.pow(dn.brightness, 0.45));
 
   // 周期性存档(有改动才写)
@@ -733,6 +758,12 @@ function frame(now: number): void {
   }
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
+  if (viewMode === 1) {
+    // 第三人称:沿视线反方向拉开,撞方块则回缩
+    const back = lookDir(dirVec).multiplyScalar(-1);
+    const d = thirdPersonDist(world, player.eyePos(eyeVec), back, 4);
+    camera.position.addScaledVector(back, d);
+  }
 
   // 水下氛围
   setUnderwater(
@@ -789,7 +820,7 @@ function frame(now: number): void {
       mining.hitTimer -= dt;
       if (mining.hitTimer <= 0) {
         sound.hit(digHit.id);
-        hud.punchHand();
+        swingArm();
         mining.hitTimer = 0.22;
       }
       if (mining.progress >= mining.total) {
@@ -883,6 +914,16 @@ function frame(now: number): void {
     particles.setViewport(window.innerHeight, camera.projectionMatrix.elements[5]);
   }
 
+  // 玩家模型姿态(仅第三人称可见,更新本身很便宜)
+  model.update(
+    dt,
+    player.pos,
+    player.yaw,
+    player.pitch,
+    Math.hypot(player.vel.x, player.vel.z),
+    player.isInWater(),
+  );
+
   // 天空跟随与云层漂移
   sky.update(dt, camera.position, dn);
 
@@ -936,6 +977,9 @@ if (new URLSearchParams(location.search).has('test')) {
       hotbar: () => [...hotbar],
       selected: () => selectedSlot,
     },
+    view: () => viewMode,
+    toggleView: () => toggleView(),
+    modelVisible: () => model.group.visible,
     mobs: {
       count: () => mobs.count,
       list: () => mobs.debugList(),

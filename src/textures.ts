@@ -883,6 +883,89 @@ export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: Mob
   };
 }
 
+/** 玩家(史蒂夫式)皮肤:头/脸/身/臂/腿 五张 16px 贴图 */
+export interface SteveSkin {
+  head: THREE.CanvasTexture;
+  face: THREE.CanvasTexture;
+  body: THREE.CanvasTexture;
+  arm: THREE.CanvasTexture;
+  leg: THREE.CanvasTexture;
+}
+
+export function buildSteveTextures(): SteveSkin {
+  const make = (paint: Painter, seed: number): THREE.CanvasTexture => {
+    const canvas = document.createElement('canvas');
+    canvas.width = TS;
+    canvas.height = TS;
+    const ctx = canvas.getContext('2d')!;
+    const img = ctx.createImageData(TS, TS);
+    paint(img, mulberry32(seed));
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  };
+  const skinTone: Painter = (img, rng) => {
+    noiseFill(img, rng, [199, 156, 118], 6);
+  };
+  const hair = (img: ImageData, rows: number, rng: () => number) => {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < TS; x++) {
+        const v = (rng() * 2 - 1) * 6;
+        px(img, x, y, clamp255(58 + v), clamp255(40 + v), clamp255(26 + v));
+      }
+    }
+  };
+  // 头侧/顶:肤色 + 上半头发
+  const head = make((img, rng) => {
+    skinTone(img, rng);
+    hair(img, 6, rng);
+  }, 661001);
+  // 脸:发际线 + 眼(白+蓝紫瞳) + 鼻影 + 嘴
+  const face = make((img, rng) => {
+    skinTone(img, rng);
+    hair(img, 4, rng);
+    for (const ox of [3, 9]) {
+      px(img, ox, 7, 246, 246, 246);
+      px(img, ox + 1, 7, 78, 62, 150);
+      px(img, ox, 8, 246, 246, 246);
+      px(img, ox + 1, 8, 78, 62, 150);
+    }
+    px(img, 7, 9, 168, 120, 90);
+    px(img, 8, 9, 168, 120, 90);
+    for (let x = 6; x <= 9; x++) px(img, x, 12, 120, 76, 54);
+  }, 661002);
+  // 身:青色上衣
+  const body = make((img, rng) => {
+    noiseFill(img, rng, [0, 158, 158], 8);
+    for (let x = 0; x < TS; x++) px(img, x, 0, 0, 132, 132);
+  }, 661003);
+  // 臂:肤色(短袖上臂两行衣色)
+  const arm = make((img, rng) => {
+    skinTone(img, rng);
+    for (let y = 0; y < 5; y++) {
+      for (let x = 0; x < TS; x++) {
+        const v = (rng() * 2 - 1) * 8;
+        px(img, x, y, clamp255(0 + v), clamp255(158 + v), clamp255(158 + v));
+      }
+    }
+  }, 661004);
+  // 腿:靛蓝裤 + 底部灰鞋
+  const leg = make((img, rng) => {
+    noiseFill(img, rng, [64, 70, 158], 8);
+    for (let y = TS - 3; y < TS; y++) {
+      for (let x = 0; x < TS; x++) {
+        const v = (rng() * 2 - 1) * 6;
+        px(img, x, y, clamp255(96 + v), clamp255(96 + v), clamp255(100 + v));
+      }
+    }
+  }, 661005);
+  return { head, face, body, arm, leg };
+}
+
 /** 柔边方形月亮:冷白色调,带几块月海暗斑 */
 export function buildMoonTexture(): THREE.CanvasTexture {
   const size = 64;

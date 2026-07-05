@@ -29,6 +29,7 @@ export class TouchControls {
   mineActive = false;
   onPause: () => void = () => {};
   onInventory: () => void = () => {};
+  onView: () => void = () => {};
   /** 点按(短触未拖动):作用于准星处,放置/点燃/攻击 */
   onTap: () => void = () => {};
 
@@ -76,6 +77,10 @@ export class TouchControls {
     );
     const time = el('btn-time', 'touch-btn');
     time.innerHTML = svg('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>');
+    const view = el('btn-view', 'touch-btn');
+    view.innerHTML = svg(
+      '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/>',
+    );
 
     // --- 摇杆 ---
     const applyJoy = (e: PointerEvent) => {
@@ -190,6 +195,7 @@ export class TouchControls {
     };
     tap(pause, () => this.onPause());
     tap(inv, () => this.onInventory());
+    tap(view, () => this.onView());
   }
 
   /** 读取并清零累计的视角位移(与鼠标 consumeLook 同语义) */

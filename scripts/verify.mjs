@@ -991,6 +991,42 @@ check(
 await page.evaluate(() => window.__game.setTime(0.25));
 await page.waitForTimeout(200);
 
+// --- F5 第三人称:模型可见,行走摆腿截图,再切回第一人称 ---
+const v0 = await page.evaluate(() => ({
+  view: window.__game.view(),
+  model: window.__game.modelVisible(),
+}));
+await page.keyboard.press('F5');
+await page.waitForTimeout(200);
+const v1 = await page.evaluate(() => ({
+  view: window.__game.view(),
+  model: window.__game.modelVisible(),
+}));
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  g.player.pos.set(s.x, s.y + 0.01, s.z);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.25;
+});
+await page.keyboard.down('KeyW');
+await page.waitForTimeout(450); // 行走中抓拍摆腿
+await page.screenshot({ path: `${OUT}/16-third-person.png` });
+await page.keyboard.up('KeyW');
+await page.waitForTimeout(200);
+await page.keyboard.press('F5');
+await page.waitForTimeout(200);
+const v2 = await page.evaluate(() => ({
+  view: window.__game.view(),
+  model: window.__game.modelVisible(),
+}));
+check(
+  'F5 第三人称视角',
+  v0.view === 0 && !v0.model && v1.view === 1 && v1.model && v2.view === 0 && !v2.model,
+  `视角 ${v0.view}→${v1.view}→${v2.view},模型可见 ${v0.model}→${v1.model}→${v2.model}`,
+);
+
 // --- 环顾远景 ---
 await look(0, -45, 30);
 await look(10, 0, 22);
@@ -1166,10 +1202,17 @@ await mob.waitForTimeout(500);
 await mob.mouse.up();
 const tc1 = await mob.evaluate(() => window.__game.env().time);
 const tcDelta = (((tc1 - tc0) % 1) + 1) % 1;
+// 视角按钮:切到第三人称再切回
+await mob.click('#btn-view');
+await mob.waitForTimeout(200);
+const mView1 = await mob.evaluate(() => window.__game.view());
+await mob.click('#btn-view');
+await mob.waitForTimeout(200);
+const mView2 = await mob.evaluate(() => window.__game.view());
 check(
-  '触屏背包与时钟按钮',
-  mInvOpen && mInvClosed && tcDelta > 0.03,
-  `背包 开 ${mInvOpen} → 点空白关 ${mInvClosed},按住时钟 0.5s 推进 ${tcDelta.toFixed(3)} 天`,
+  '触屏背包/时钟/视角按钮',
+  mInvOpen && mInvClosed && tcDelta > 0.03 && mView1 === 1 && mView2 === 0,
+  `背包 开 ${mInvOpen} → 点空白关 ${mInvClosed},时钟 0.5s 推进 ${tcDelta.toFixed(3)} 天,视角 ${mView1}→${mView2}`,
 );
 // 手势:屏幕中心点按放置玻璃,再原地长按挖掉(基岩版交互)
 await mob.mouse.move(406, 187); // 先归位鼠标,避免后续 move 的视角增量
