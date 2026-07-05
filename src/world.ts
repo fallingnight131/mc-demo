@@ -36,6 +36,8 @@ export class World {
   readonly water = new WaterSim(this);
   /** 块光照(火把/萤石),不透明方块遮挡 */
   readonly lights = new Lights((x, y, z) => BLOCK_DEFS[this.getBlock(x, y, z)].opaque);
+  /** 任意格子数据变化后的回调(重力方块唤醒等) */
+  onBlockChanged: ((x: number, y: number, z: number) => void) | null = null;
   private lightDirty = false;
   /** 玩家编辑覆盖层:区块卸载重生成后回放,亦用于存档 */
   private readonly edits = new Map<string, Map<number, number>>();
@@ -170,6 +172,7 @@ export class World {
     if (lx === CS - 1) this.addIfPresent(cx + 1, cz, dirty);
     if (lz === 0) this.addIfPresent(cx, cz - 1, dirty);
     if (lz === CS - 1) this.addIfPresent(cx, cz + 1, dirty);
+    this.onBlockChanged?.(x, y, z);
     return true;
   }
 

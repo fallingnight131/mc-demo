@@ -24,6 +24,8 @@ const MAX_LANDINGS = 512;
 export class WaterSim {
   /** 瀑布落点回调(本 tick 新落地的水格),用于溅水粒子 */
   onLanding: ((cells: Array<[number, number, number]>) => void) | null = null;
+  /** 火把等被水冲走时回调(掉落物/音效由入口处理) */
+  onWashed: ((x: number, y: number, z: number, id: number) => void) | null = null;
   private active = new Map<string, [number, number, number]>();
   /** 持久的瀑布落点(上有来水、下是实体的水格),供持续溅水采样 */
   private landings = new Map<string, [number, number, number]>();
@@ -123,9 +125,15 @@ export class WaterSim {
     for (const [x, y, z] of cells) {
       const id = this.world.getBlock(x, y, z);
       if (id === Block.Water) continue; // 水源不衰减
-      if (id !== Block.Air && !isWater(id)) continue; // 被实体方块占据
+      // 火把等十字面片方块挡不住水:有水要流入时被冲走
+      const washable = BLOCK_DEFS[id].shape === 'cross';
+      if (id !== Block.Air && !isWater(id) && !washable) continue; // 被实体方块占据
 
       const lvl = this.computeLevel(x, y, z);
+      if (washable) {
+        if (lvl <= 0) continue; // 没有水流到这,火把保留
+        this.onWashed?.(x, y, z, id);
+      }
       const targetId = lvl <= 0 ? Block.Air : flowId(lvl);
       if (targetId !== id) changes.push([x, y, z, targetId]);
     }

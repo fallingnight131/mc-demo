@@ -1057,6 +1057,55 @@ await page.evaluate(() => window.__game.setTime(0.25));
 await page.keyboard.press('Digit1');
 await page.waitForTimeout(200);
 
+// --- 方块物理:沙子失去支撑坠落;火把被水冲走 ---
+const physInfo = await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 9;
+  const z = Math.floor(s.z) + 3;
+  const h = g.world.gen.heightAt(x, z);
+  // 石柱托一块沙,然后抽掉石柱
+  g.world.setBlock(x, h + 1, z, 3);
+  g.world.setBlock(x, h + 2, z, 4);
+  g.world.setBlock(x, h + 1, z, 0);
+  return { x, z, h };
+});
+await page.waitForTimeout(900); // 等沙落定
+const sandFell = await page.evaluate(
+  ({ x, z, h }) => ({
+    landed: window.__game.world.getBlock(x, h + 1, z) === 4,
+    origin: window.__game.world.getBlock(x, h + 2, z) === 0,
+  }),
+  physInfo,
+);
+const torchWash = await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 9;
+  const z = Math.floor(s.z) + 6;
+  const h = g.world.gen.heightAt(x, z);
+  g.world.setBlock(x, h + 1, z, 33); // 火把
+  g.world.setBlock(x + 1, h + 1, z, 10); // 旁边放水源
+  return { x, z, h, drops0: g.drops.count };
+});
+await page.waitForTimeout(1500); // 等水流 tick
+const washResult = await page.evaluate(
+  ({ x, z, h, drops0 }) => {
+    const g = window.__game;
+    g.world.setBlock(x + 1, h + 1, z, 0); // 清理水源
+    return {
+      gone: g.world.getBlock(x, h + 1, z) !== 33,
+      dropped: g.drops.count > drops0,
+    };
+  },
+  torchWash,
+);
+check(
+  '方块物理:沙落与水冲火把',
+  sandFell.landed && sandFell.origin && washResult.gone && washResult.dropped,
+  `沙落地 ${sandFell.landed} 原位空 ${sandFell.origin};火把被冲走 ${washResult.gone} 掉落物 ${washResult.dropped}`,
+);
+
 // --- 长按 T:时间连续快进(替代原先的跳跃式) ---
 const tHold0 = await page.evaluate(() => window.__game.env().time);
 await page.keyboard.down('KeyT');

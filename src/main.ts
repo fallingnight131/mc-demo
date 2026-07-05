@@ -5,6 +5,7 @@ import { baseBlock, Block, BLOCK_DEFS, isWater, PLACEABLE, pumpkinVariant } from
 import { EYE_HEIGHT, REACH, RENDER_DISTANCE, CHUNK_SIZE } from './config';
 import { Input } from './controls';
 import { clockText, computeDayNight, DAY_LENGTH } from './daynight';
+import { FallingBlocks } from './falling';
 import { HUD } from './hud';
 import { ItemDrops } from './items';
 import { Mobs, type MobKind } from './mobs';
@@ -210,6 +211,19 @@ world.water.onLanding = (cells) => {
 // --- 掉落物 ---
 const drops = new ItemDrops(textures.atlas, world);
 scene.add(drops.group);
+
+// --- 重力方块(沙子坠落)与水冲火把 ---
+const falling = new FallingBlocks(textures.atlas, world);
+scene.add(falling.group);
+falling.onLand = (x, y, z, id) => sound.place(id);
+world.onBlockChanged = (x, y, z) => {
+  falling.wake(x, y + 1, z); // 上方失去支撑
+  falling.wake(x, y, z); // 悬空放置的重力方块
+};
+world.water.onWashed = (x, y, z, id) => {
+  drops.spawn(x, y, z, id); // 火把被水冲走,掉出可拾取物
+  sound.splash();
+};
 
 // --- 生物(猪/羊/鸡) ---
 const mobs = new Mobs(world, (x, z) => world.gen.heightAt(x, z));
@@ -575,8 +589,8 @@ function placeAt(hit: RayHit | null): void {
   const cur = world.getBlock(tx, ty, tz);
   if (cur !== Block.Air && !isWater(cur)) return;
   if (player.intersectsBlock(tx, ty, tz)) return;
-  // 火把等只能放在实体方块顶面
-  if (BLOCK_DEFS[id].needsGround && !world.isSolid(tx, ty - 1, tz)) return;
+  // 火把等只能放在实体方块顶面,且不能放进水里
+  if (BLOCK_DEFS[id].needsGround && (!world.isSolid(tx, ty - 1, tz) || isWater(cur))) return;
   // 南瓜按放置视角转脸朝向玩家
   const placed = id === Block.Pumpkin ? pumpkinVariant(player.yaw) : id;
   world.setBlock(tx, ty, tz, placed);
@@ -816,6 +830,7 @@ function frame(now: number): void {
   drops.setBrightness(dn.brightness);
   particles.setBrightness(dn.brightness);
   mobs.setBrightness(dn.brightness);
+  falling.setBrightness(dn.brightness);
   model.setBrightness(dn.brightness);
   heldMat.color.setScalar(dn.brightness);
   for (const m of heldToolMats) m.color.setScalar(dn.brightness);
@@ -919,6 +934,7 @@ function frame(now: number): void {
     updateTnt(dt);
     drops.update(dt, playerCenterVec.set(player.pos.x, player.pos.y + 0.9, player.pos.z));
     mobs.update(dt, playerCenterVec);
+    falling.update(dt);
 
     // 环境声:风随海拔增强(带阵风起伏),靠近瀑布有流水声,水下屏蔽风声
     ambienceTimer += dt;

@@ -95,6 +95,8 @@ export interface BlockDef {
   shape?: 'cross';
   /** 只能放在实体方块顶面(火把) */
   needsGround?: boolean;
+  /** 重力方块:下方失去支撑时坠落(沙子) */
+  gravity?: boolean;
 }
 
 const T = Tile;
@@ -106,7 +108,7 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '草方块', tiles: [T.GrassSide, T.GrassSide, T.GrassTop, T.Dirt, T.GrassSide, T.GrassSide], solid: true, opaque: true, hardness: 0.45 },
   { name: '泥土', tiles: [T.Dirt, T.Dirt, T.Dirt, T.Dirt, T.Dirt, T.Dirt], solid: true, opaque: true, hardness: 0.4 },
   { name: '石头', tiles: [T.Stone, T.Stone, T.Stone, T.Stone, T.Stone, T.Stone], solid: true, opaque: true, hardness: 1.2 },
-  { name: '沙子', tiles: [T.Sand, T.Sand, T.Sand, T.Sand, T.Sand, T.Sand], solid: true, opaque: true, hardness: 0.35 },
+  { name: '沙子', tiles: [T.Sand, T.Sand, T.Sand, T.Sand, T.Sand, T.Sand], solid: true, opaque: true, hardness: 0.35, gravity: true },
   { name: '原木', tiles: [T.LogSide, T.LogSide, T.LogTop, T.LogTop, T.LogSide, T.LogSide], solid: true, opaque: true, hardness: 0.9 },
   { name: '树叶', tiles: [T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves], solid: true, opaque: true, hardness: 0.2 },
   { name: '木板', tiles: [T.Plank, T.Plank, T.Plank, T.Plank, T.Plank, T.Plank], solid: true, opaque: true, hardness: 0.8 },
