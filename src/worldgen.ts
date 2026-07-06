@@ -14,6 +14,7 @@ import {
   WORLD_HEIGHT,
 } from './config';
 import { hash2, hash3, Noise2D, Noise3D } from './noise';
+import { Structures } from './structures';
 
 const CS = CHUNK_SIZE;
 const WH = WORLD_HEIGHT;
@@ -51,7 +52,12 @@ export class Generator {
     this.riverAngles = [0, 1, 2].map(
       (i) => hash2(i * 17 + 3, i * 31 + 7, seed ^ 0x11e4) * Math.PI * 2,
     );
+    // 地标(世界树/天空岛/地牢/地狱遗迹)选址依赖上面的地形函数,最后构造
+    this.structures = new Structures(this);
   }
+
+  /** 地标结构(Phase 4):区块生成时盖章,宝箱战利品查询 */
+  readonly structures: Structures;
 
   private readonly riverAngles: number[];
 
@@ -245,8 +251,8 @@ export class Generator {
         for (let y = h + 1; y <= SEA_LEVEL; y++) {
           data[idx(lx, y, lz)] = Block.Water;
         }
-        // 草地上的野生南瓜(避开树与深谷),朝向按位置确定性随机
-        if (!sandy && !snowy && !chasm && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && this.hasPumpkin(wx, wz)) {
+        // 草地上的野生南瓜(避开树、深谷与地标),朝向按位置确定性随机
+        if (!sandy && !snowy && !chasm && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && this.hasPumpkin(wx, wz) && !this.structures.suppressSurfaceAt(wx, wz)) {
           const face = [Block.Pumpkin, Block.PumpkinE, Block.PumpkinN, Block.PumpkinW];
           data[idx(lx, h + 1, lz)] = face[(hash2(wx, wz, this.seed ^ 0x9c1a) * 4) | 0];
         }
@@ -263,6 +269,7 @@ export class Generator {
         const h = this.heightAt(wx, wz);
         if (h <= SEA_LEVEL + 1 || h >= SNOW_LEVEL - 4) continue;
         if (this.chasmAt(wx, wz)) continue; // 深谷口不长树
+        if (this.structures.suppressSurfaceAt(wx, wz)) continue; // 地标脚下不长树
 
         const treeBiome = this.biomeAt(wx, wz);
         // 丛林树更高大;腐化树矮小紫叶
@@ -299,6 +306,14 @@ export class Generator {
         }
       }
     }
+
+    // 地标盖章(世界树/天空岛/地牢/地狱遗迹):覆盖地形与树木
+    this.structures.stampChunk(
+      ox,
+      oz,
+      (x, y, z, id) => set(x - ox, y, z - oz, id),
+      (x, y, z, id) => setIfSoft(x - ox, y, z - oz, id),
+    );
 
     return data;
   }

@@ -25,6 +25,7 @@ import { Player } from './player';
 import { PlayerModel, thirdPersonDist } from './playermodel';
 import { Sky, SKY_HORIZON } from './sky';
 import { materialOf, Sound } from './sound';
+import { CHEST_LOOT } from './structures';
 import { isTool, Tool, TOOL_DEFS, TOOL_IDS } from './tools';
 import { buildCrackTextures, buildTextures, buildWaterTexture } from './textures';
 import { isTouchDevice, TouchControls } from './touch';
@@ -690,9 +691,25 @@ let leftHeld = false;
 const TAP_MS = 230;
 let leftDownAt = 0;
 
-/** 点按:手持打火石对准 TNT 才点燃(因此 TNT 可以互相堆叠),否则放置 */
+/** 开箱:宝箱消失,按所在地标喷出战利品 */
+function openChest(hit: RayHit): void {
+  world.setBlock(hit.x, hit.y, hit.z, Block.Air);
+  sound.chest();
+  particles.burst(hit.x, hit.y, hit.z, Block.Chest, 14);
+  const table = world.gen.structures.lootAt(hit.x, hit.y, hit.z);
+  for (const id of CHEST_LOOT[table]) {
+    drops.spawn(hit.x, hit.y, hit.z, id);
+  }
+  hud.toast('开箱!');
+}
+
+/** 点按:宝箱开箱;手持打火石对准 TNT 才点燃(因此 TNT 可以互相堆叠),否则放置 */
 function useAt(hit: RayHit | null): void {
   const held = hotbar[selectedSlot];
+  if (hit && hit.id === Block.Chest) {
+    openChest(hit);
+    return;
+  }
   if (hit && hit.id === Block.TNT && held === Tool.FlintSteel) {
     sound.spark();
     igniteTnt(hit.x, hit.y, hit.z);
@@ -1224,6 +1241,12 @@ if (new URLSearchParams(location.search).has('test')) {
     layer: () => ({ name: layerNameOf(player.pos.y), y: player.pos.y }),
     biome: () => world.gen.biomeAt(player.pos.x, player.pos.z),
     deaths: () => deaths,
+    structures: () => ({
+      tree: world.gen.structures.tree,
+      islands: world.gen.structures.islands,
+      dungeon: world.gen.structures.dungeon,
+      hellForts: world.gen.structures.hellForts,
+    }),
     setHp: (v: number) => {
       hp = Math.max(1, Math.min(10, v));
       hud.setHearts(hp);

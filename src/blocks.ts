@@ -48,6 +48,11 @@ export const Tile = {
   EbonStone: 39,
   JungleLeaves: 40,
   CorruptLeaves: 41,
+  ChestSide: 42,
+  ChestFront: 43,
+  ChestTop: 44,
+  DungeonBrick: 45,
+  Cloud: 46,
 } as const;
 
 export const Block = {
@@ -96,6 +101,9 @@ export const Block = {
   EbonStone: 40, // 腐化石(黑檀石)
   JungleLeaves: 41, // 丛林树叶
   CorruptLeaves: 42, // 腐化树叶
+  Chest: 43, // 宝箱:点按开箱掉战利品(地标专属,不可放置不可挖)
+  DungeonBrick: 44, // 地牢砖:泰拉蓝砖,坚硬
+  Cloud: 45, // 云块:天空岛材质
 } as const;
 
 export interface BlockDef {
@@ -165,6 +173,9 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '黑檀石', tiles: [T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone], solid: true, opaque: true, hardness: 1.4 },
   { name: '丛林树叶', tiles: [T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves], solid: true, opaque: true, hardness: 0.2 },
   { name: '腐化树叶', tiles: [T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves], solid: true, opaque: true, hardness: 0.2 },
+  { name: '宝箱', tiles: [T.ChestSide, T.ChestSide, T.ChestTop, T.ChestTop, T.ChestFront, T.ChestSide], solid: true, opaque: true, hardness: Infinity },
+  { name: '地牢砖', tiles: [T.DungeonBrick, T.DungeonBrick, T.DungeonBrick, T.DungeonBrick, T.DungeonBrick, T.DungeonBrick], solid: true, opaque: true, hardness: 5 },
+  { name: '云块', tiles: [T.Cloud, T.Cloud, T.Cloud, T.Cloud, T.Cloud, T.Cloud], solid: true, opaque: true, hardness: 0.2 },
 ];
 
 /** 方块发光等级(0..15) */
@@ -216,6 +227,8 @@ export const PLACEABLE: number[] = [
   Block.DiamondBlock,
   Block.Torch,
   Block.Glowstone,
+  Block.DungeonBrick,
+  Block.Cloud,
 ];
 
 /** 按放置者视角选南瓜朝向:脸转向玩家 */

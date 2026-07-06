@@ -994,10 +994,12 @@ await page.keyboard.press('KeyE');
 await page.waitForTimeout(250);
 await page.click('#inv-grid .inv-slot[title="火把"]');
 await page.waitForTimeout(250);
-await page.evaluate(() => {
+const lightBaseline = await page.evaluate(() => {
   const g = window.__game;
   g.player.yaw = 0;
   g.player.pitch = -0.65;
+  // 基线光源数:地标(世界树/地牢/遗迹)的生成萤石随区块加载登记
+  return g.world.lights.sourceCount;
 });
 await page.waitForTimeout(120);
 await page.mouse.down(); // 点按放火把
@@ -1043,12 +1045,12 @@ if (torchInfo) {
     [torchInfo.x, torchInfo.y, torchInfo.z],
   );
   torchOk =
-    torchInfo.src === 14 && torchInfo.near === 13 && torchInfo.sources === 1 &&
-    after.block === 0 && after.light === 0 && after.sources === 0;
+    torchInfo.src === 14 && torchInfo.near === 13 && torchInfo.sources === lightBaseline + 1 &&
+    after.block === 0 && after.light === 0 && after.sources === lightBaseline;
   check(
     '火把:夜间光照与挖除',
     torchOk,
-    `放置后源=${torchInfo.src} 邻=${torchInfo.near} 光源数=${torchInfo.sources};挖除后 方块=${after.block} 光=${after.light} 光源数=${after.sources}`,
+    `放置后源=${torchInfo.src} 邻=${torchInfo.near} 光源数=${torchInfo.sources}(基线 ${lightBaseline}+1);挖除后 方块=${after.block} 光=${after.light} 光源数=${after.sources}`,
   );
 } else {
   check('火把:夜间光照与挖除', false, '未能放置火把');
@@ -1397,6 +1399,159 @@ if (biomeSpots.corruption) {
 } else {
   check('群系:腐化之地', false, '未找到腐化陆地');
 }
+// --- Terraria 3D · Phase 4:地标(世界树/天空岛/地牢)与宝箱 ---
+// 世界树:外观截图 → 进树开底层宝箱
+const treeInfo = await page.evaluate(() => {
+  const g = window.__game;
+  const t = g.structures().tree;
+  // 站在树与出生点之间 22 格处,面向树看树冠
+  const ang = Math.atan2(t.z, t.x);
+  const px = t.x - Math.cos(ang) * 22;
+  const pz = t.z - Math.sin(ang) * 22;
+  g.world.warmup(Math.floor(t.x / 16), Math.floor(t.z / 16));
+  g.world.warmup(Math.floor(px / 16), Math.floor(pz / 16));
+  const h = g.world.gen.heightAt(Math.round(px), Math.round(pz));
+  g.player.pos.set(px + 0.5, h + 1.01, pz + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.atan2(-(t.x - px), -(t.z - pz));
+  g.player.pitch = 0.42;
+  return t;
+});
+await page.waitForTimeout(1800);
+await page.screenshot({ path: `${OUT}/23-worldtree.png` });
+const treeCheck = await page.evaluate((t) => {
+  const g = window.__game;
+  // 传送进树内,精确瞄准底层宝箱的中心
+  g.player.pos.set(t.x + 0.5, t.ground + 1.01, t.z - 2 + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.PI; // 面向 +z(宝箱在中心)
+  const eyeY = t.ground + 1.01 + 1.62;
+  g.player.pitch = Math.atan2(t.ground + 1.5 - eyeY, 2);
+  let logs = 0;
+  for (let y = t.ground; y < t.ground + 40; y += 4) {
+    if (g.world.getBlock(t.x + 4, y, t.z) === 5) logs++;
+  }
+  return {
+    logs,
+    chest: g.world.getBlock(t.x, t.ground + 1, t.z) === 43,
+    pickups: g.stats.pickups,
+  };
+}, treeInfo);
+await page.waitForTimeout(300);
+await page.mouse.down();
+await page.waitForTimeout(70);
+await page.mouse.up();
+await page.waitForTimeout(1200); // 战利品磁吸拾取
+const treeLoot = await page.evaluate((t) => {
+  const g = window.__game;
+  return {
+    chestGone: g.world.getBlock(t.x, t.ground + 1, t.z) === 0,
+    gained: g.stats.pickups,
+    drops: g.drops.count,
+  };
+}, treeInfo);
+check(
+  '地标:世界树与开箱',
+  treeCheck.logs >= 9 &&
+    treeCheck.chest &&
+    treeLoot.chestGone &&
+    (treeLoot.gained > treeCheck.pickups || treeLoot.drops > 0),
+  `树干原木 ${treeCheck.logs}/10,宝箱开出战利品:拾取 ${treeCheck.pickups}→${treeLoot.gained},场上掉落 ${treeLoot.drops}`,
+);
+
+// 天空岛:传送上岛,断言天空层/悬空/神龛宝箱
+const islandCheck = await page.evaluate(() => {
+  const g = window.__game;
+  const isl = g.structures().islands[0];
+  g.world.warmup(Math.floor(isl.x / 16), Math.floor(isl.z / 16));
+  // 神龛外找一块草皮落脚
+  let sx = isl.x + 3;
+  for (let dx = 3; dx <= 6; dx++) {
+    const id = g.world.getBlock(isl.x + dx, isl.y, isl.z);
+    if (id !== 0) {
+      sx = isl.x + dx;
+      break;
+    }
+  }
+  g.player.pos.set(sx + 0.5, isl.y + 1.01, isl.z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.atan2(-(isl.x - sx), 0);
+  g.player.pitch = -0.12;
+  return {
+    isl,
+    chest: g.world.getBlock(isl.x, isl.y + 1, isl.z) === 43,
+    floating: g.world.getBlock(isl.x, isl.y - 16, isl.z) === 0,
+  };
+});
+await page.waitForTimeout(1600);
+const islandHud = await page.evaluate(() => ({
+  meter: document.getElementById('depth-meter').textContent,
+  y: window.__game.player.pos.y,
+}));
+await page.screenshot({ path: `${OUT}/23b-skyisland.png` });
+check(
+  '地标:天空岛',
+  islandCheck.chest && islandCheck.floating && islandHud.meter.includes('天空层'),
+  `岛(${islandCheck.isl.x},${islandCheck.isl.y},${islandCheck.isl.z}) 宝箱 ${islandCheck.chest},悬空 ${islandCheck.floating},深度计 "${islandHud.meter}"`,
+);
+
+// 地牢:塔楼外观 → 顶层房间(蓝砖迷宫,生成萤石正常发光)
+const dungeonOutside = await page.evaluate(() => {
+  const g = window.__game;
+  const d = g.structures().dungeon;
+  // 站在朝出生点一侧的塔门外
+  const face = Math.abs(d.x) > Math.abs(d.z) ? [d.x > 0 ? -1 : 1, 0] : [0, d.z > 0 ? -1 : 1];
+  const px = d.x + face[0] * 19;
+  const pz = d.z + face[1] * 19;
+  g.world.warmup(Math.floor(d.x / 16), Math.floor(d.z / 16));
+  g.world.warmup(Math.floor(px / 16), Math.floor(pz / 16));
+  const h = g.world.gen.heightAt(Math.round(px), Math.round(pz));
+  g.player.pos.set(px + 0.5, Math.max(h, d.ground) + 1.01, pz + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.atan2(-(d.x - px), -(d.z - pz));
+  g.player.pitch = 0.12;
+  return d;
+});
+await page.waitForTimeout(1600);
+await page.screenshot({ path: `${OUT}/23c-dungeon.png` });
+const dungeonCheck = await page.evaluate((d) => {
+  const g = window.__game;
+  // 顶层房间 (0,0):中心 (x-8, z-8),室内地面 y = ground-10
+  const fy = d.ground - 10;
+  g.player.pos.set(d.x - 6 + 0.5, fy + 0.01, d.z - 8 + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.PI / 2; // 面向 -x(房间中心宝箱)
+  g.player.pitch = -0.2;
+  return {
+    brickWall: g.world.getBlock(d.x - 12, fy, d.z - 8) === 44,
+    brickSlab: g.world.getBlock(d.x - 8, fy - 1, d.z - 8) === 44,
+    chest: g.world.getBlock(d.x - 8, fy, d.z - 8) === 43,
+    // 光照采样宝箱上方的空气格(不透明格子光值恒 0)
+    roomLight: g.world.lights.lightAt(d.x - 8, fy + 1, d.z - 8),
+  };
+}, dungeonOutside);
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${OUT}/23d-dungeon-room.png` });
+check(
+  '地标:地牢迷宫',
+  dungeonCheck.brickWall && dungeonCheck.brickSlab && dungeonCheck.chest && dungeonCheck.roomLight >= 4,
+  `蓝砖墙/楼板 ${dungeonCheck.brickWall}/${dungeonCheck.brickSlab},房间宝箱 ${dungeonCheck.chest},萤石光照 ${dungeonCheck.roomLight}`,
+);
+
+// 地狱遗迹:视觉复核截图(结构断言由单元测试覆盖)
+await page.evaluate(() => {
+  const g = window.__game;
+  const f = g.structures().hellForts[0];
+  if (!f) return;
+  g.world.warmup(Math.floor(f.x / 16), Math.floor(f.z / 16));
+  g.player.pos.set(f.x + 7 + 0.5, 12.01, f.z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.PI / 2; // 面向 -x(遗迹门洞)
+  g.player.pitch = 0.06;
+});
+await page.waitForTimeout(1400);
+await page.screenshot({ path: `${OUT}/23e-hellfort.png` });
+
 // 回到出生点
 await page.evaluate(() => {
   const g = window.__game;

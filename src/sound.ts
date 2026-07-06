@@ -21,9 +21,13 @@ export function materialOf(blockId: number): Material {
     case Block.IronBlock:
     case Block.GoldBlock:
     case Block.DiamondBlock:
+    case Block.EbonStone:
+    case Block.Hellstone:
+    case Block.DungeonBrick:
       return 'stone';
     case Block.Log:
     case Block.Plank:
+    case Block.Chest:
     case Block.Pumpkin:
     case Block.PumpkinE:
     case Block.PumpkinN:
@@ -301,6 +305,27 @@ export class Sound {
       this.cry(0, 'square', f, 0.07, 2000, vol * 0.7);
       this.cry(0.1, 'square', f * 0.9, 0.07, 2000, vol * 0.6);
       if (!hurt && Math.random() < 0.6) this.cry(0.22, 'square', f * 1.05, 0.06, 2000, vol * 0.5);
+    }
+  }
+
+  /** 开箱:木盖吱呀 + 上行三音琶音(战利品!) */
+  chest(): void {
+    if (!this.ready) return;
+    this.knock(120, 0.12, 0.4);
+    this.noise({ duration: 0.18, filterType: 'bandpass', freq: 620, freqEnd: 900, q: 2.2, gain: 0.2 });
+    const ctx = this.ctx!;
+    const t0 = ctx.currentTime + 0.1;
+    for (const [i, f] of [660, 830, 1100].entries()) {
+      const t = t0 + i * 0.09;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = f;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.22, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      osc.connect(gain).connect(this.master!);
+      osc.start(t);
+      osc.stop(t + 0.18);
     }
   }
 

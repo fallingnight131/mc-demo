@@ -157,8 +157,9 @@ export class Sky {
     };
     this.cloudLowTex = buildCloudTexture(424242);
     this.cloudHighTex = buildCloudTexture(777001);
-    [this.cloudLow, this.cloudLowMat] = makeCloudPlane(this.cloudLowTex, 108, 6, 0.82);
-    [this.cloudHigh, this.cloudHighMat] = makeCloudPlane(this.cloudHighTex, 132, 3.2, 0.4);
+    // 云层在天空岛(y≈190..206)之上,Phase 2 抬升世界后同步上移
+    [this.cloudLow, this.cloudLowMat] = makeCloudPlane(this.cloudLowTex, 212, 6, 0.82);
+    [this.cloudHigh, this.cloudHighMat] = makeCloudPlane(this.cloudHighTex, 236, 3.2, 0.4);
   }
 
   /** 每帧:穹顶/日月星辰跟随相机与时间,云层漂移并水平跟随玩家 */

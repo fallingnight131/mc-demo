@@ -345,6 +345,49 @@ const painters: Record<number, Painter> = {
       px(img, (rng() * TS) | 0, (rng() * TS) | 0, 70, 46, 100);
     }
   },
+  [Tile.ChestSide]: (img, rng) => chestBase(img, rng),
+  [Tile.ChestFront]: (img, rng) => {
+    chestBase(img, rng);
+    // 金色锁扣:盖缝中央的竖向搭扣
+    for (let y = 4; y <= 8; y++) {
+      for (let x = 7; x <= 8; x++) {
+        px(img, x, y, 216, 174, 62);
+      }
+    }
+    px(img, 7, 6, 130, 96, 30);
+    px(img, 8, 6, 130, 96, 30);
+  },
+  [Tile.ChestTop]: (img, rng) => {
+    noiseFill(img, rng, [158, 116, 60], 8);
+    for (let i = 0; i < TS; i++) {
+      px(img, i, 0, 96, 68, 36);
+      px(img, i, TS - 1, 96, 68, 36);
+      px(img, 0, i, 96, 68, 36);
+      px(img, TS - 1, i, 96, 68, 36);
+    }
+  },
+  [Tile.DungeonBrick]: (img, rng) => {
+    // 泰拉地牢蓝砖:深蓝底 + 亮蓝砖块 + 近黑砖缝(4 行错缝)
+    for (let y = 0; y < TS; y++) {
+      const row = y >> 2;
+      const mortarRow = y % 4 === 3;
+      for (let x = 0; x < TS; x++) {
+        const seam = row % 2 === 0 ? (x + 4) % 8 === 7 : x % 8 === 7;
+        const v = (rng() * 2 - 1) * 7;
+        if (mortarRow || seam) {
+          px(img, x, y, clamp255(16 + v), clamp255(18 + v), clamp255(34 + v));
+        } else {
+          px(img, x, y, clamp255(48 + v), clamp255(64 + v), clamp255(128 + v));
+        }
+      }
+    }
+  },
+  [Tile.Cloud]: (img, rng) => {
+    noiseFill(img, rng, [244, 248, 252], 4);
+    for (let i = 0; i < 8; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 226, 234, 244);
+    }
+  },
   [Tile.Sandstone]: (img, rng) => {
     // 水平层理的砂岩
     for (let y = 0; y < TS; y++) {
@@ -474,6 +517,21 @@ function metalPaint(img: ImageData, rng: () => number, base: [number, number, nu
     shade(2, i, -14);
     shade(i, TS - 3, 12);
     shade(TS - 3, i, 12);
+  }
+}
+
+/** 宝箱基底:木箱身 + 深色包边 + 盖缝 */
+function chestBase(img: ImageData, rng: () => number): void {
+  noiseFill(img, rng, [172, 126, 64], 8);
+  for (let i = 0; i < TS; i++) {
+    px(img, i, 0, 96, 68, 36);
+    px(img, i, TS - 1, 96, 68, 36);
+    px(img, 0, i, 96, 68, 36);
+    px(img, TS - 1, i, 96, 68, 36);
+  }
+  // 盖缝(上 1/3 处)
+  for (let x = 1; x < TS - 1; x++) {
+    px(img, x, 5, 110, 78, 40);
   }
 }
 

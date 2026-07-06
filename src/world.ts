@@ -255,8 +255,30 @@ export class World {
           this.water.wakeAround(cx * CS + lx, y, cz * CS + lz);
         }
       }
+      this.scanChunkLights(c, true);
     }
     return c;
+  }
+
+  /**
+   * 登记/注销区块内世界生成的光源(地标里的萤石等)。
+   * 玩家放置的光源走编辑通道全局登记(与区块装卸无关),这里跳过,
+   * 避免卸载时把它们误注销。
+   */
+  private scanChunkLights(c: Chunk, add: boolean): void {
+    const m = this.edits.get(this.key(c.cx, c.cz));
+    const data = c.data;
+    for (let i = 0; i < data.length; i++) {
+      const lv = lightLevel(data[i]);
+      if (lv === 0) continue;
+      if (m !== undefined && m.get(i) === data[i]) continue; // 玩家放置,全局常驻
+      const y = Math.floor(i / (CS * CS));
+      const lz = Math.floor(i / CS) % CS;
+      const lx = i % CS;
+      if (add) this.lights.addSource(c.cx * CS + lx, y, c.cz * CS + lz, lv);
+      else this.lights.removeSource(c.cx * CS + lx, y, c.cz * CS + lz);
+      this.lightDirty = true;
+    }
   }
 
   private hasData(cx: number, cz: number): boolean {
@@ -310,6 +332,10 @@ export class World {
         this.ensureData(cx + dx, cz + dz);
       }
     }
+    if (this.lightDirty) {
+      this.lightDirty = false;
+      this.lights.recompute(); // 网格尚未建,直接刷新光照数据即可
+    }
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
         this.rebuildMesh(this.ensureData(cx + dx, cz + dz));
@@ -329,6 +355,7 @@ export class World {
       for (const [k, c] of this.chunks) {
         const d = Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz));
         if (d > UNLOAD_DISTANCE) {
+          this.scanChunkLights(c, false);
           this.disposeMeshes(c);
           this.chunks.delete(k);
         }
@@ -358,6 +385,15 @@ export class World {
       ) {
         this.rebuildMesh(c);
         meshBudget--;
+      }
+    }
+
+    // 流式加载/卸载改变了生成光源 → 冲洗光照并重建受影响网格
+    if (this.lightDirty) {
+      const dirty = new Set<Chunk>();
+      this.flushLight(dirty);
+      for (const c of dirty) {
+        if (c.meshed) this.rebuildMesh(c);
       }
     }
   }
