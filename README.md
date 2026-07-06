@@ -1,6 +1,9 @@
-# MC Demo
+# Terraria 3D(原 MC Demo)
 
-用 TypeScript + Three.js + Vite 实现的可玩 Minecraft 风格体素沙盒演示。
+用 TypeScript + Three.js + Vite 实现的体素沙盒演示,正在按
+[CLAUDE.md](CLAUDE.md) 蓝图从 Minecraft 风格转型为 **3D 泰拉瑞亚**:
+有限但纵深的结构化世界 —— 中心出生地、环形山脉、无尽海与空气墙
+(Phase 1 已完成),垂直分层/生物群系/世界树/天空岛/地牢陆续推进。
 
 ## 运行
 

@@ -785,10 +785,10 @@ if (shore) {
   console.log('SKIP  水流(附近没找到合适湖岸)');
 }
 
-// --- 游泳:传送进湖里,按空格上浮 ---
+// --- 游泳:传送进深水,按空格上浮(内陆湖不够深就去海里) ---
 const water = await page.evaluate(() => {
   const g = window.__game;
-  for (let r = 4; r < 96; r += 2) {
+  for (let r = 4; r < 380; r += 4) {
     for (let a = 0; a < 16; a++) {
       const x = Math.round(Math.cos((a / 16) * Math.PI * 2) * r);
       const z = Math.round(Math.sin((a / 16) * Math.PI * 2) * r);
@@ -1266,6 +1266,73 @@ check(
   tpDetail.crosshairVisible && heldStone === 3 && heldSword === 102 && v2.crosshair && v2.held === -1,
   `第三人称准星可见 ${tpDetail.crosshairVisible},手持 石头=${heldStone} 剑=${heldSword},切回后手持清空 ${v2.held === -1}`,
 );
+
+// --- Terraria 3D:空气墙(有限世界边界)与结构化地形 ---
+await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.setAutoSpawn(false);
+  g.mobs.clear();
+  // 传送到边界内 3 格的海面上,面朝正外(+x)
+  g.player.pos.set(617, 26, 0);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = -Math.PI / 2;
+  g.player.pitch = 0;
+});
+await page.waitForTimeout(800);
+await page.keyboard.down('KeyW');
+await page.waitForTimeout(2000); // 向外游 2s,应被空气墙拦住
+await page.keyboard.up('KeyW');
+const wallDist = await page.evaluate(() => {
+  const p = window.__game.player.pos;
+  return Math.hypot(p.x, p.z);
+});
+// 越墙放置应被拒绝(准星指向墙外海面)
+await page.keyboard.press('Digit4');
+await page.evaluate(() => {
+  const g = window.__game;
+  g.player.yaw = -Math.PI / 2;
+  g.player.pitch = -0.5;
+});
+await page.mouse.down();
+await page.waitForTimeout(70);
+await page.mouse.up();
+await page.waitForTimeout(200);
+const wallOut = await page.evaluate(() => {
+  const g = window.__game;
+  let placed = 0;
+  for (let dx = 0; dx <= 8; dx++) {
+    for (let dy = -4; dy <= 2; dy++) {
+      if (g.world.getBlock(620 + dx, 26 + dy, 0) === 8) placed++;
+    }
+  }
+  return placed;
+});
+check(
+  '空气墙:有限世界边界',
+  wallDist <= 620.01 && wallOut === 0,
+  `向外冲 2s 后距中心 ${wallDist.toFixed(1)}(墙 620),墙外圆石 ${wallOut} 块`,
+);
+await page.screenshot({ path: `${OUT}/20-ocean-edge.png` });
+// 山脉带远景
+await page.evaluate(() => {
+  const g = window.__game;
+  g.world.warmup(0, Math.floor(-120 / 16));
+  const h = g.world.gen.heightAt(0, -120);
+  g.player.pos.set(0.5, Math.max(h + 1.01, 27), -119.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0; // 面向 -z(山脉带方向)
+  g.player.pitch = 0.08;
+});
+await page.waitForTimeout(1500); // 等区块网格化
+await page.screenshot({ path: `${OUT}/20b-mountain-range.png` });
+await page.evaluate(() => {
+  const g = window.__game;
+  g.world.warmup(Math.floor(g.spawn.x / 16), Math.floor(g.spawn.z / 16));
+  g.player.pos.set(g.spawn.x, g.spawn.y + 1, g.spawn.z);
+  g.player.vel.set(0, 0, 0);
+  g.mobs.setAutoSpawn(true);
+});
+await page.waitForTimeout(600);
 
 // --- 环顾远景 ---
 await look(0, -45, 30);

@@ -1,30 +1,69 @@
 // 程序化地形生成:高度场 + 海洋/沙滩/雪山 + 树木
 // 全部基于世界坐标的确定性函数,保证跨区块一致。
 import { Block } from './blocks';
-import { CHUNK_SIZE, SEA_LEVEL, SNOW_LEVEL, WORLD_HEIGHT } from './config';
+import {
+  CHUNK_SIZE,
+  COAST_WIDTH,
+  CONTINENT_RADIUS,
+  RANGE_INNER,
+  RANGE_OUTER,
+  SEA_LEVEL,
+  SNOW_LEVEL,
+  WORLD_HEIGHT,
+} from './config';
 import { hash2, hash3, Noise2D } from './noise';
 
 const CS = CHUNK_SIZE;
 const WH = WORLD_HEIGHT;
 const TREE_MARGIN = 3; // 树冠可越界的范围,生成时向外多扫描
 
+function smooth01(e0: number, e1: number, v: number): number {
+  const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
 export class Generator {
   readonly seed: number;
   private readonly hills: Noise2D;
   private readonly mountains: Noise2D;
+  private readonly coast: Noise2D;
 
   constructor(seed: number) {
     this.seed = seed;
     this.hills = new Noise2D(seed);
     this.mountains = new Noise2D(seed ^ 0x5bd1e995);
+    this.coast = new Noise2D(seed ^ 0x27d4eb2f);
   }
 
-  /** 地表高度(最上层固体方块的 y) */
+  /**
+   * 地表高度 —— Terraria 3D 结构化大陆:
+   * 出生地(世界中心)为平缓森林,四周一圈蜿蜒的环形山脉(带山口),
+   * 大陆经噪声扰动的海岸线缓降入海,海面一直延伸到空气墙。
+   */
   heightAt(x: number, z: number): number {
-    const base = 26 + this.hills.fbm(x * 0.012, z * 0.012, 4) * 9;
-    const m = this.mountains.fbm(x * 0.004, z * 0.004, 3);
-    const mm = Math.max(0, m - 0.1) / 0.9;
-    const h = base + mm * mm * 38;
+    const d = Math.hypot(x, z);
+    // 海岸线随位置噪声起伏 ±55
+    const coastWobble = this.coast.fbm(x * 0.004, z * 0.004, 3) * 55;
+    const coastR = CONTINENT_RADIUS + coastWobble;
+    // 陆地系数:内陆 1 → 海 0
+    const land = smooth01(coastR, coastR - COAST_WIDTH, d);
+    // 海底:离岸越远越深(最深至海平面下 12)
+    const seabed = SEA_LEVEL - 3 - Math.min(9, Math.max(0, (d - coastR + 26) * 0.09));
+
+    // 内陆:平缓丘陵 + 环形山脉带
+    const base = 27 + this.hills.fbm(x * 0.012, z * 0.012, 4) * 7;
+    const mid = (RANGE_INNER + RANGE_OUTER) / 2;
+    const halfW = (RANGE_OUTER - RANGE_INNER) / 2;
+    const ringDist = Math.abs(d - mid) / halfW; // 0 = 山脉带中央
+    // 山口:角向噪声偏低处山脉断开,留出通往海岸的谷道
+    const gap = this.mountains.fbm(x * 0.003 + 7.3, z * 0.003 - 3.1, 2);
+    const mask = smooth01(1, 0.55, ringDist) * smooth01(-0.38, -0.12, gap);
+    // 脊状噪声:连绵山脊而非随机圆包
+    const r = 1 - Math.abs(this.mountains.fbm(x * 0.006, z * 0.006, 4));
+    const ridge = Math.pow(Math.max(0, r), 2.2);
+    const landH = base + ridge * mask * 46;
+
+    const h = seabed * (1 - land) + landH * land;
     return Math.max(2, Math.min(WH - 16, Math.floor(h)));
   }
 

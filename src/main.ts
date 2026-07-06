@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { buildBlockGeometry } from './blockmesh';
 import { baseBlock, Block, BLOCK_DEFS, isWater, PLACEABLE, pumpkinVariant } from './blocks';
-import { EYE_HEIGHT, REACH, RENDER_DISTANCE, CHUNK_SIZE } from './config';
+import { EYE_HEIGHT, REACH, RENDER_DISTANCE, CHUNK_SIZE, WORLD_WALL_RADIUS } from './config';
 import { Input } from './controls';
 import { clockText, computeDayNight, DAY_LENGTH } from './daynight';
 import { FallingBlocks } from './falling';
@@ -621,6 +621,7 @@ function placeAt(hit: RayHit | null): void {
   const tx = hit.x + hit.nx;
   const ty = hit.y + hit.ny;
   const tz = hit.z + hit.nz;
+  if (Math.hypot(tx + 0.5, tz + 0.5) > WORLD_WALL_RADIUS) return; // 空气墙外禁放
   const cur = world.getBlock(tx, ty, tz);
   if (cur !== Block.Air && !isWater(cur)) return;
   if (player.intersectsBlock(tx, ty, tz)) return;

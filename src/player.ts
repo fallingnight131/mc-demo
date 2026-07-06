@@ -9,6 +9,7 @@ import {
   PLAYER_WIDTH,
   SPRINT_SPEED,
   WALK_SPEED,
+  WORLD_WALL_RADIUS,
 } from './config';
 
 export interface PlayerInput {
@@ -70,6 +71,25 @@ export class Player {
   }
 
   update(dt: number, input: PlayerInput): void {
+    this.stepPhysics(dt, input);
+    // 空气墙:世界为有限圆域,超出边界把玩家径向推回(Terraria 3D)
+    const r = Math.hypot(this.pos.x, this.pos.z);
+    if (r > WORLD_WALL_RADIUS) {
+      const s = WORLD_WALL_RADIUS / r;
+      this.pos.x *= s;
+      this.pos.z *= s;
+      // 消掉向外的速度分量
+      const nx = this.pos.x / WORLD_WALL_RADIUS;
+      const nz = this.pos.z / WORLD_WALL_RADIUS;
+      const vOut = this.vel.x * nx + this.vel.z * nz;
+      if (vOut > 0) {
+        this.vel.x -= vOut * nx;
+        this.vel.z -= vOut * nz;
+      }
+    }
+  }
+
+  private stepPhysics(dt: number, input: PlayerInput): void {
     // 拆分子步,避免低帧率时穿墙
     const steps = Math.max(1, Math.ceil(dt / (1 / 60)));
     const h = dt / steps;
