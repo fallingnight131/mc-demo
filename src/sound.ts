@@ -281,7 +281,7 @@ export class Sound {
   }
 
   /** 生物叫声(vol 按距离衰减;hurt 时音调更高更急) */
-  mobVoice(kind: 'pig' | 'sheep' | 'chicken', vol: number, hurt = false): void {
+  mobVoice(kind: 'pig' | 'sheep' | 'chicken' | 'zombie', vol: number, hurt = false): void {
     if (!this.ready || vol <= 0.02) return;
     if (kind === 'pig') {
       if (hurt) {
@@ -290,6 +290,9 @@ export class Sound {
         this.cry(0, 'sawtooth', 170, 0.14, 520, vol);
         if (Math.random() < 0.5) this.cry(0.16, 'sawtooth', 150, 0.12, 520, vol);
       }
+    } else if (kind === 'zombie') {
+      // 低沉呻吟
+      this.cry(0, 'sawtooth', hurt ? 130 : 88, hurt ? 0.3 : 0.55, 260, vol * 1.1, 0.6);
     } else if (kind === 'sheep') {
       this.cry(0, 'triangle', hurt ? 620 : 470, hurt ? 0.24 : 0.34, 780, vol * 1.1, 1);
     } else {
@@ -299,6 +302,12 @@ export class Sound {
       this.cry(0.1, 'square', f * 0.9, 0.07, 2000, vol * 0.6);
       if (!hurt && Math.random() < 0.6) this.cry(0.22, 'square', f * 1.05, 0.06, 2000, vol * 0.5);
     }
+  }
+
+  /** 玩家受击闷哼 */
+  hurt(): void {
+    this.knock(160, 0.12, 0.5);
+    this.noise({ duration: 0.15, filterType: 'lowpass', freq: 700, freqEnd: 200, gain: 0.4 });
   }
 
   /** 拾取掉落物的"啵"声 */

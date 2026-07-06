@@ -104,6 +104,7 @@ interface SaveData {
   counts?: Record<string, number>;
   time?: number;
   hotbar?: number[];
+  hp?: number;
 }
 let saved: SaveData | null = null;
 try {
@@ -157,6 +158,7 @@ function saveGame(): void {
       counts: stats.counts,
       time: timeOfDay,
       hotbar: [...hotbar],
+      hp,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     world.editsDirty = false;
@@ -226,7 +228,11 @@ world.water.onWashed = (x, y, z, id) => {
 };
 
 // --- 生物(猪/羊/鸡) ---
-const mobs = new Mobs(world, (x, z) => world.gen.heightAt(x, z));
+const mobs = new Mobs(
+  world,
+  (x, z) => world.gen.heightAt(x, z),
+  (x, y, z) => world.lights.lightAt(x, y, z),
+);
 scene.add(mobs.group);
 mobs.onDeath = (kind, x, y, z) => {
   // 白烟消失(借雪的白色纹理当烟雾)
@@ -234,6 +240,34 @@ mobs.onDeath = (kind, x, y, z) => {
   sound.mobVoice(kind, 0.9, true);
 };
 mobs.onVoice = (kind, dist) => sound.mobVoice(kind, Math.max(0.12, 1 - dist / 28));
+
+// --- 玩家生命(10 点 = 5 颗心):僵尸攻击扣血,缓慢回复,归零重生 ---
+let hp = typeof saved?.hp === 'number' ? Math.max(1, Math.min(10, saved.hp)) : 10;
+let regenTimer = 0;
+let deaths = 0;
+
+function respawn(): void {
+  deaths++;
+  hp = 10;
+  player.pos.set(spawn.x, spawn.y + 1, spawn.z);
+  player.vel.set(0, 0, 0);
+  hud.setHearts(hp);
+  hud.toast('你死了,回到出生点');
+}
+
+mobs.onAttack = (dmg, dirX, dirZ) => {
+  hp -= dmg;
+  player.vel.x += dirX * 7;
+  player.vel.z += dirZ * 7;
+  player.vel.y = Math.max(player.vel.y, 4.5);
+  sound.hurt();
+  hud.flashDamage();
+  hud.setHearts(hp);
+  if (hp <= 0) respawn();
+};
+mobs.onBurning = (x, y, z) => {
+  particles.burst(Math.floor(x), Math.floor(y), Math.floor(z), Block.Snow, 5);
+};
 
 // --- 玩家模型(第三人称显示,F5/视角按钮切换)---
 const model = new PlayerModel();
@@ -433,6 +467,7 @@ function refreshHotbar(): void {
   hotbar.forEach((id, i) => hud.setSlotCount(i, stats.counts[id] ?? 0));
 }
 refreshHotbar();
+hud.setHearts(hp);
 
 const input = new Input(renderer.domElement);
 
@@ -830,6 +865,17 @@ function frame(now: number): void {
   drops.setBrightness(dn.brightness);
   particles.setBrightness(dn.brightness);
   mobs.setBrightness(dn.brightness);
+  mobs.nightFactor = dn.starAlpha;
+  mobs.daylight = dn.brightness > 0.55;
+  // 缓慢回血(4s/点)
+  if (hp < 10 && input.locked) {
+    regenTimer += dt;
+    if (regenTimer >= 4) {
+      regenTimer = 0;
+      hp = Math.min(10, hp + 1);
+      hud.setHearts(hp);
+    }
+  }
   falling.setBrightness(dn.brightness);
   model.setBrightness(dn.brightness);
   heldMat.color.setScalar(dn.brightness);
@@ -1082,6 +1128,12 @@ if (new URLSearchParams(location.search).has('test')) {
     toggleView: () => toggleView(),
     modelVisible: () => model.group.visible,
     heldId: () => heldShown,
+    hp: () => hp,
+    deaths: () => deaths,
+    setHp: (v: number) => {
+      hp = Math.max(1, Math.min(10, v));
+      hud.setHearts(hp);
+    },
     mobs: {
       count: () => mobs.count,
       list: () => mobs.debugList(),

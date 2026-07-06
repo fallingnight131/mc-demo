@@ -10,7 +10,7 @@ const DESPAWN_DIST = 90;
 const GRAVITY = 24;
 const HOP_SPEED = 7.2; // 遇 1 格台阶的小跳
 
-export type MobKind = 'pig' | 'sheep' | 'chicken';
+export type MobKind = 'pig' | 'sheep' | 'chicken' | 'zombie';
 
 interface SpeciesDef {
   hp: number;
@@ -19,13 +19,20 @@ interface SpeciesDef {
   half: number; // 碰撞半宽
   height: number; // 碰撞高
   slowFall: boolean; // 鸡扑翼缓降
+  hostile?: boolean; // 敌对:夜间黑暗处生成,追击玩家,白天燃烧
 }
 
 const SPECIES: Record<MobKind, SpeciesDef> = {
   pig: { hp: 3, walk: 1.5, flee: 4.6, half: 0.32, height: 0.85, slowFall: false },
   sheep: { hp: 3, walk: 1.3, flee: 4.2, half: 0.35, height: 1.0, slowFall: false },
   chicken: { hp: 2, walk: 1.1, flee: 3.6, half: 0.2, height: 0.62, slowFall: true },
+  zombie: { hp: 5, walk: 1.9, flee: 1.9, half: 0.3, height: 1.8, slowFall: false, hostile: true },
 };
+
+const CHASE_RANGE = 18; // 僵尸索敌距离
+const ATTACK_RANGE = 1.5;
+const ATTACK_COOLDOWN = 1.0;
+const BURN_INTERVAL = 0.8; // 白天燃烧掉血间隔
 
 export interface MobWorldQuery {
   isSolid(x: number, y: number, z: number): boolean;
@@ -135,15 +142,18 @@ interface Mob {
   kind: MobKind;
   body: MobBody;
   hp: number;
-  mode: 'idle' | 'walk' | 'flee';
+  mode: 'idle' | 'walk' | 'flee' | 'chase';
   timer: number;
   voiceTimer: number;
   flash: number; // 受击红闪剩余时间
   phase: number; // 腿摆动相位
   displayHeading: number; // 平滑转身
+  attackCd: number; // 攻击冷却(敌对)
+  burnAcc: number; // 白天燃烧计时(敌对)
   group: THREE.Group;
   legs: THREE.Mesh[];
   legSign: number[]; // 每条腿的摆动相位符号
+  arms: THREE.Mesh[]; // 人形双臂(僵尸前伸)
   mats: THREE.MeshBasicMaterial[]; // 本体专属材质(红闪/昼夜亮度)
 }
 
@@ -160,6 +170,14 @@ export class Mobs {
   onVoice: ((kind: MobKind, dist: number) => void) | null = null;
   /** 自然生成开关(测试中可关闭以保证确定性) */
   autoSpawn = true;
+  /** 夜晚程度(0..1,主循环每帧设置):决定敌对生成与被动减产 */
+  nightFactor = 0;
+  /** 白天(亮度高):敌对生物燃烧 */
+  daylight = false;
+  /** 僵尸打中玩家:伤害与击退方向 */
+  onAttack: ((dmg: number, dirX: number, dirZ: number) => void) | null = null;
+  /** 燃烧中的敌对生物位置(白烟粒子) */
+  onBurning: ((x: number, y: number, z: number) => void) | null = null;
 
   private readonly list: Mob[] = [];
   private readonly skins: Record<MobKind, MobSkin>;
@@ -170,6 +188,7 @@ export class Mobs {
   constructor(
     private readonly world: MobWorldQuery,
     private readonly surfaceAt: (x: number, z: number) => number,
+    private readonly lightAt: (x: number, y: number, z: number) => number = () => 0,
   ) {
     this.skins = buildMobTextures();
   }
@@ -205,6 +224,7 @@ export class Mobs {
     group: THREE.Group;
     legs: THREE.Mesh[];
     legSign: number[];
+    arms: THREE.Mesh[];
     mats: THREE.MeshBasicMaterial[];
   } {
     const skin = this.skins[kind];
@@ -213,10 +233,31 @@ export class Mobs {
     const faceMat = new THREE.MeshBasicMaterial({ map: skin.face });
     const g = new THREE.Group();
     const legs: THREE.Mesh[] = [];
+    const arms: THREE.Mesh[] = [];
     let legSign: number[] = [];
     const headMats = [headMat, headMat, headMat, headMat, headMat, faceMat];
 
-    if (kind === 'pig') {
+    if (kind === 'zombie') {
+      // 人形:头 + 衣身 + 前伸双臂 + 双腿
+      const head = new THREE.Mesh(this.box(0.42, 0.42, 0.42), headMats);
+      head.position.set(0, 1.56, 0);
+      g.add(head);
+      const body = new THREE.Mesh(this.box(0.42, 0.62, 0.22), bodyMat);
+      body.position.y = 1.02;
+      g.add(body);
+      for (const side of [-1, 1]) {
+        const arm = new THREE.Mesh(this.box(0.17, 0.62, 0.17, true), bodyMat);
+        arm.position.set(side * 0.3, 1.32, 0);
+        arm.rotation.x = -1.45; // 经典僵尸前伸
+        arms.push(arm);
+        g.add(arm);
+        const leg = new THREE.Mesh(this.box(0.18, 0.7, 0.18, true), headMat);
+        leg.position.set(side * 0.11, 0.7, 0);
+        legs.push(leg);
+        g.add(leg);
+      }
+      legSign = [1, -1];
+    } else if (kind === 'pig') {
       const body = new THREE.Mesh(this.box(0.58, 0.5, 0.95), bodyMat);
       body.position.y = 0.55;
       g.add(body);
@@ -276,12 +317,12 @@ export class Mobs {
       }
       legSign = [1, -1];
     }
-    return { group: g, legs, legSign, mats: [bodyMat, headMat, faceMat] };
+    return { group: g, legs, legSign, arms, mats: [bodyMat, headMat, faceMat] };
   }
 
   spawnAt(x: number, y: number, z: number, kind: MobKind = 'pig'): void {
     const def = SPECIES[kind];
-    const { group, legs, legSign, mats } = this.buildModel(kind);
+    const { group, legs, legSign, arms, mats } = this.buildModel(kind);
     group.position.set(x, y, z);
     this.group.add(group);
 
@@ -306,9 +347,12 @@ export class Mobs {
       flash: 0,
       phase: 0,
       displayHeading: heading,
+      attackCd: 0,
+      burnAcc: 0,
       group,
       legs,
       legSign,
+      arms,
       mats,
     });
   }
@@ -322,6 +366,15 @@ export class Mobs {
     // 只在已加载的草地上生成(未加载区块 getBlock 返回空气,自然被拒)
     if (this.world.getBlock(x, h, z) !== Block.Grass) return;
     if (this.world.getBlock(x, h + 1, z) !== Block.Air) return;
+    const night = this.nightFactor > 0.5;
+    if (night && Math.random() < 0.55) {
+      // 夜间黑暗处刷僵尸:被火把/萤石照亮(块光 ≥8)的地方不刷
+      if (this.lightAt(x, h + 1, z) >= 8) return;
+      this.spawnAt(x + 0.5, h + 1.01, z + 0.5, 'zombie');
+      return;
+    }
+    // 被动生物夜里大幅减产
+    if (night && Math.random() > 0.25) return;
     const r = Math.random();
     const kind: MobKind = r < 0.4 ? 'pig' : r < 0.75 ? 'sheep' : 'chicken';
     this.spawnAt(x + 0.5, h + 1.01, z + 0.5, kind);
@@ -347,19 +400,56 @@ export class Mobs {
         continue;
       }
 
-      // 行为:发呆 ↔ 漫步,受击后短暂逃窜
-      m.timer -= dt;
-      if (m.timer <= 0) {
-        if (m.mode === 'idle') {
-          m.mode = 'walk';
-          m.timer = 1.5 + Math.random() * 2.5;
-          b.heading = Math.random() * Math.PI * 2;
-          b.speed = SPECIES[m.kind].walk;
-          b.moving = true;
-        } else {
+      // 行为:敌对追击玩家;其余发呆 ↔ 漫步,受击后短暂逃窜
+      const def = SPECIES[m.kind];
+      m.attackCd = Math.max(0, m.attackCd - dt);
+      if (def.hostile && dist < CHASE_RANGE) {
+        m.mode = 'chase';
+        b.heading = Math.atan2(-(playerPos.x - b.pos.x), -(playerPos.z - b.pos.z));
+        b.speed = def.walk;
+        b.moving = dist > ATTACK_RANGE * 0.7;
+        if (dist < ATTACK_RANGE && m.attackCd <= 0) {
+          m.attackCd = ATTACK_COOLDOWN;
+          const dx = playerPos.x - b.pos.x;
+          const dz = playerPos.z - b.pos.z;
+          const dl = Math.max(0.2, Math.hypot(dx, dz));
+          this.onAttack?.(2, dx / dl, dz / dl);
+        }
+      } else {
+        if (m.mode === 'chase') {
           m.mode = 'idle';
-          m.timer = 1 + Math.random() * 3;
+          m.timer = 0.5;
           b.moving = false;
+        }
+        m.timer -= dt;
+        if (m.timer <= 0) {
+          if (m.mode === 'idle') {
+            m.mode = 'walk';
+            m.timer = 1.5 + Math.random() * 2.5;
+            b.heading = Math.random() * Math.PI * 2;
+            b.speed = def.walk;
+            b.moving = true;
+          } else {
+            m.mode = 'idle';
+            m.timer = 1 + Math.random() * 3;
+            b.moving = false;
+          }
+        }
+      }
+
+      // 白天燃烧:敌对生物在日光下持续掉血冒白烟
+      if (def.hostile && this.daylight) {
+        m.burnAcc += dt;
+        if (m.burnAcc >= BURN_INTERVAL) {
+          m.burnAcc = 0;
+          this.onBurning?.(b.pos.x, b.pos.y + 1, b.pos.z);
+          m.hp -= 1;
+          m.flash = 0.2;
+          if (m.hp <= 0) {
+            this.onDeath?.(m.kind, b.pos.x, b.pos.y + 0.4, b.pos.z);
+            this.removeAt(i);
+            continue;
+          }
         }
       }
 
@@ -372,6 +462,9 @@ export class Mobs {
       const swing = Math.sin(m.phase) * Math.min(1, hspeed / 2) * 0.75;
       for (let l = 0; l < m.legs.length; l++) {
         m.legs[l].rotation.x = swing * m.legSign[l];
+      }
+      for (let a2 = 0; a2 < m.arms.length; a2++) {
+        m.arms[a2].rotation.x = -1.45 + Math.sin(m.phase + a2 * Math.PI) * 0.12;
       }
       let dh = b.heading - m.displayHeading;
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
@@ -460,11 +553,13 @@ export class Mobs {
     b.vel.x += dirX * knock;
     b.vel.z += dirZ * knock;
     b.vel.y = Math.max(b.vel.y, knockUp);
-    m.mode = 'flee';
-    m.timer = 1.2;
-    b.moving = true;
-    b.speed = SPECIES[m.kind].flee;
-    b.heading = Math.atan2(-dirX, -dirZ); // 沿冲击方向逃离
+    if (!SPECIES[m.kind].hostile) {
+      m.mode = 'flee';
+      m.timer = 1.2;
+      b.moving = true;
+      b.speed = SPECIES[m.kind].flee;
+      b.heading = Math.atan2(-dirX, -dirZ); // 沿冲击方向逃离
+    }
     if (m.hp <= 0) {
       this.onDeath?.(m.kind, b.pos.x, b.pos.y + 0.4, b.pos.z);
       const i = this.list.indexOf(m);

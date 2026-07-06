@@ -225,6 +225,51 @@
         display: block;
       }
 
+      /* 受击红闪 */
+      #damage-tint {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 3;
+        background: radial-gradient(ellipse at center, rgba(200, 0, 0, 0) 55%, rgba(200, 0, 0, 0.45) 100%);
+        opacity: 0;
+      }
+      #damage-tint.show {
+        animation: dmgflash 0.4s ease-out;
+      }
+      @keyframes dmgflash {
+        0% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      /* 生命值心条 */
+      #hearts {
+        position: fixed;
+        left: 50%;
+        bottom: 72px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 2px;
+        z-index: 5;
+        pointer-events: none;
+        font-size: 18px;
+        text-shadow: 0 1px 2px #000;
+      }
+      .heart.full {
+        color: #e33;
+      }
+      .heart.half {
+        color: #e33;
+        opacity: 0.55;
+      }
+      .heart.empty {
+        color: rgba(255, 255, 255, 0.25);
+      }
+
       #crosshair {
         position: fixed;
         left: 50%;
@@ -558,6 +603,8 @@
       </div>
     </div>
     <div id="water-tint"></div>
+    <div id="damage-tint"></div>
+    <div id="hearts"></div>
     <div id="rotate-hint">🔄 建议横屏游玩</div>
     <div id="inventory">
       <div class="inv-panel">

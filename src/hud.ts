@@ -109,6 +109,26 @@ export class HUD {
     this.hand.style.display = v ? '' : 'none';
   }
 
+  /** 生命值心条:hp 0..10,每颗心 2 点(满/半/空) */
+  setHearts(hp: number): void {
+    const el = document.getElementById('hearts')!;
+    let html = '';
+    for (let i = 0; i < 5; i++) {
+      const v = hp - i * 2;
+      const cls = v >= 2 ? 'full' : v >= 1 ? 'half' : 'empty';
+      html += `<span class="heart ${cls}">\u2764</span>`;
+    }
+    el.innerHTML = html;
+  }
+
+  /** 受击红闪 */
+  flashDamage(): void {
+    const el = document.getElementById('damage-tint')!;
+    el.classList.remove('show');
+    void el.offsetWidth; // 重启动画
+    el.classList.add('show');
+  }
+
   /** 手持方块随昼夜变暗(值为 CSS brightness,变化超过阈值才写样式) */
   private handBrightness = -1;
   setHandBrightness(b: number): void {

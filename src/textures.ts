@@ -845,7 +845,7 @@ export interface MobSkin {
 }
 
 /** 猪/羊/鸡的程序化皮肤(盒子模型用) */
-export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: MobSkin } {
+export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: MobSkin; zombie: MobSkin } {
   const make = (paint: Painter, seed: number): THREE.CanvasTexture => {
     const canvas = document.createElement('canvas');
     canvas.width = TS;
@@ -945,10 +945,33 @@ export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: Mob
     px(img, 8, 12, 172, 34, 30);
   }, 557002);
 
+  // 僵尸:腐绿皮肤 + 深青破衣 + 黑眼直视
+  const zombieSkin: Painter = (img, rng) => {
+    noiseFill(img, rng, [96, 146, 78], 9);
+  };
+  const zombieHead = make(zombieSkin, 558001);
+  const zombieBody = make((img, rng) => {
+    noiseFill(img, rng, [0, 112, 118], 10);
+    for (let i = 0; i < 8; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 60, 84, 64); // 破洞
+    }
+  }, 558002);
+  const zombieFace = make((img, rng) => {
+    zombieSkin(img, rng);
+    for (const y of [7, 8]) {
+      px(img, 3, y, 22, 26, 20);
+      px(img, 4, y, 22, 26, 20);
+      px(img, 11, y, 22, 26, 20);
+      px(img, 12, y, 22, 26, 20);
+    }
+    // 暗色嘴缝
+    for (let x = 6; x <= 9; x++) px(img, x, 12, 44, 62, 40);
+  }, 558003);
   return {
     pig: { body: pigBody, head: pigBody, face: pigFace },
     sheep: { body: sheepBody, head: sheepHead, face: sheepFace },
     chicken: { body: chickenBody, head: chickenBody, face: chickenFace },
+    zombie: { body: zombieBody, head: zombieHead, face: zombieFace },
   };
 }
 

@@ -1106,6 +1106,83 @@ check(
   `沙落地 ${sandFell.landed} 原位空 ${sandFell.origin};火把被冲走 ${washResult.gone} 掉落物 ${washResult.dropped}`,
 );
 
+// --- 僵尸:夜间追击攻击玩家,白天燃烧;玩家死亡重生 ---
+await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.setAutoSpawn(false);
+  g.mobs.clear();
+  g.setTime(0.75); // 午夜
+  g.setHp(10);
+  const s = g.spawn;
+  const x = Math.floor(s.x);
+  const z = Math.floor(s.z);
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.1;
+  // 僵尸生成在 6 格外,验证追击
+  g.mobs.spawnAt(x + 0.5, g.world.gen.heightAt(x, z - 6) + 1.01, z - 6 + 0.5, 'zombie');
+});
+await page.waitForTimeout(400);
+const z0 = await page.evaluate(() => {
+  const g = window.__game;
+  const m = g.mobs.list()[0];
+  const p = g.player.pos;
+  return { kind: m.kind, dist: Math.hypot(m.x - p.x, m.z - p.z), hp: g.hp() };
+});
+await page.screenshot({ path: `${OUT}/19-zombie.png` });
+await page.waitForTimeout(3200); // 等它追过来打人
+const z1 = await page.evaluate(() => {
+  const g = window.__game;
+  const m = g.mobs.list()[0];
+  const p = g.player.pos;
+  return { dist: m ? Math.hypot(m.x - p.x, m.z - p.z) : 99, hp: g.hp() };
+});
+check(
+  '僵尸:夜间追击并攻击',
+  z0.kind === 'zombie' && z1.dist < z0.dist - 1 && z1.hp < z0.hp,
+  `距离 ${z0.dist.toFixed(1)}→${z1.dist.toFixed(1)},玩家 HP ${z0.hp}→${z1.hp}`,
+);
+
+// 玩家被打死 → 死亡计数 +1、血量重置回满(僵尸可能继续追打/击退)
+const deaths0 = await page.evaluate(() => window.__game.deaths());
+await page.evaluate(() => window.__game.setHp(2));
+await page.waitForTimeout(2500); // 挨一下(-2)即死
+const respawned = await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.clear(); // 先清场,防继续挨打干扰后续断言
+  const p = g.player.pos;
+  return {
+    hp: g.hp(),
+    deaths: g.deaths(),
+    nearSpawn: Math.hypot(p.x - g.spawn.x, p.z - g.spawn.z) < 9,
+  };
+});
+check(
+  '玩家死亡重生',
+  respawned.deaths === deaths0 + 1 && respawned.hp >= 6 && respawned.nearSpawn,
+  `死亡次数 ${deaths0}→${respawned.deaths},重生后 HP=${respawned.hp},出生点附近(±9,含击退) ${respawned.nearSpawn}`,
+);
+
+// 白天:新生成的僵尸燃烧消亡
+await page.evaluate(() => {
+  const g = window.__game;
+  g.setTime(0.25); // 正午
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 5;
+  const z = Math.floor(s.z) + 5;
+  g.mobs.spawnAt(x + 0.5, g.world.gen.heightAt(x, z) + 1.01, z + 0.5, 'zombie');
+});
+const burn0 = await page.evaluate(() => window.__game.mobs.count());
+await page.waitForTimeout(5200); // 5 血 × 0.8s/血 = 4s
+const burned = await page.evaluate(() => window.__game.mobs.count());
+check('僵尸:白天燃烧消亡', burn0 === 1 && burned === 0, `正午生成 ${burn0} 只,5s 后剩 ${burned}(应烧光)`);
+await page.evaluate(() => {
+  window.__game.mobs.setAutoSpawn(true);
+  window.__game.setHp(10);
+});
+
 // --- 长按 T:时间连续快进(替代原先的跳跃式) ---
 const tHold0 = await page.evaluate(() => window.__game.env().time);
 await page.keyboard.down('KeyT');
