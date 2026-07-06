@@ -44,9 +44,9 @@ describe('矿石与南瓜生成', () => {
                 counts[id] = (counts[id] ?? 0) + 1;
                 // 矿石只在石头区域(地表 3 格以下)
                 expect(y).toBeLessThan(h - 3);
-                if (id === Block.DiamondOre) expect(y).toBeLessThanOrEqual(14);
-                if (id === Block.GoldOre) expect(y).toBeLessThanOrEqual(22);
-                if (id === Block.IronOre) expect(y).toBeLessThanOrEqual(42);
+                if (id === Block.DiamondOre) expect(y).toBeLessThanOrEqual(52);
+                if (id === Block.GoldOre) expect(y).toBeLessThanOrEqual(76);
+                if (id === Block.IronOre) expect(y).toBeLessThanOrEqual(112);
               }
             }
           }
@@ -81,7 +81,7 @@ describe('矿石与南瓜生成', () => {
         for (let lz = 0; lz < CS; lz++) {
           for (let lx = 0; lx < CS; lx++) {
             const h = gen.heightAt(cx * CS + lx, cz * CS + lz);
-            for (let y = 0; y < 64; y++) {
+            for (let y = 100; y < 190; y++) {
               if (baseBlock(data[idx(lx, y, lz)]) === Block.Pumpkin) {
                 pumpkins++;
                 expect(y).toBe(h + 1);

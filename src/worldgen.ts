@@ -5,13 +5,15 @@ import {
   CHUNK_SIZE,
   COAST_WIDTH,
   CONTINENT_RADIUS,
+  LAVA_LEVEL,
+  LAYER_HELL_TOP,
   RANGE_INNER,
   RANGE_OUTER,
   SEA_LEVEL,
   SNOW_LEVEL,
   WORLD_HEIGHT,
 } from './config';
-import { hash2, hash3, Noise2D } from './noise';
+import { hash2, hash3, Noise2D, Noise3D } from './noise';
 
 const CS = CHUNK_SIZE;
 const WH = WORLD_HEIGHT;
@@ -27,12 +29,20 @@ export class Generator {
   private readonly hills: Noise2D;
   private readonly mountains: Noise2D;
   private readonly coast: Noise2D;
+  private readonly cave1: Noise3D;
+  private readonly cave2: Noise3D;
+  private readonly cheese: Noise3D;
+  private readonly hellN: Noise2D;
 
   constructor(seed: number) {
     this.seed = seed;
     this.hills = new Noise2D(seed);
     this.mountains = new Noise2D(seed ^ 0x5bd1e995);
     this.coast = new Noise2D(seed ^ 0x27d4eb2f);
+    this.cave1 = new Noise3D(seed ^ 0x11ca5e);
+    this.cave2 = new Noise3D(seed ^ 0x77ca5e);
+    this.cheese = new Noise3D(seed ^ 0x33ca5e);
+    this.hellN = new Noise2D(seed ^ 0x66e11);
   }
 
   /**
@@ -50,8 +60,8 @@ export class Generator {
     // 海底:离岸越远越深(最深至海平面下 12)
     const seabed = SEA_LEVEL - 3 - Math.min(9, Math.max(0, (d - coastR + 26) * 0.09));
 
-    // 内陆:平缓丘陵 + 环形山脉带
-    const base = 27 + this.hills.fbm(x * 0.012, z * 0.012, 4) * 7;
+    // 内陆:平缓丘陵 + 环形山脉带(以海平面为基准)
+    const base = SEA_LEVEL + 3 + this.hills.fbm(x * 0.012, z * 0.012, 4) * 7;
     const mid = (RANGE_INNER + RANGE_OUTER) / 2;
     const halfW = (RANGE_OUTER - RANGE_INNER) / 2;
     const ringDist = Math.abs(d - mid) / halfW; // 0 = 山脉带中央
@@ -64,21 +74,43 @@ export class Generator {
     const landH = base + ridge * mask * 46;
 
     const h = seabed * (1 - land) + landH * land;
-    return Math.max(2, Math.min(WH - 16, Math.floor(h)));
+    return Math.max(LAYER_HELL_TOP + 4, Math.min(WH - 40, Math.floor(h)));
   }
 
   hasTree(x: number, z: number): boolean {
     return hash2(x, z, this.seed ^ 0x51ab3) < 0.007;
   }
 
-  /** 石头层中按深度概率撒矿石(确定性,越深越稀有的矿越多) */
+  /** 石头层中按深度概率撒矿石(洞穴层越深越出好矿) */
   oreAt(x: number, y: number, z: number): number {
     const r = hash3(x, y, z, this.seed ^ 0x0135a);
-    if (y <= 14 && r < 0.0022) return Block.DiamondOre;
-    if (y <= 22 && r < 0.0058) return Block.GoldOre;
-    if (y <= 42 && r < 0.014) return Block.IronOre;
+    if (y <= 52 && r < 0.0024) return Block.DiamondOre;
+    if (y <= 76 && r < 0.006) return Block.GoldOre;
+    if (y <= 112 && r < 0.014) return Block.IronOre;
     if (r < 0.026) return Block.CoalOre;
     return Block.Stone;
+  }
+
+  /** 洞穴挖凿:细长通道(双 3D 噪声脊交集)+ 大洞腔(cheese),洞穴层更宽 */
+  caveAt(x: number, y: number, z: number, surface: number): boolean {
+    if (y <= LAYER_HELL_TOP || y > surface - 3) return false;
+    const t1 = this.cave1.fbm2(x * 0.028, y * 0.045, z * 0.028);
+    const t2 = this.cave2.fbm2(x * 0.028, y * 0.045, z * 0.028);
+    // 通道宽度:洞穴层(y<100)最宽,向上收窄
+    const w = y < 100 ? 0.13 : 0.08;
+    if (Math.abs(t1) < w && Math.abs(t2) < w) return true;
+    // 大洞腔只出现在洞穴层
+    if (y < 100 && this.cheese.fbm2(x * 0.014, y * 0.026, z * 0.014) > 0.33) return true;
+    return false;
+  }
+
+  /** 地狱:地面/穹顶高度(带起伏,部分灰烬岸露出岩浆海) */
+  hellFloor(x: number, z: number): number {
+    return Math.round(7 + this.hellN.fbm(x * 0.03, z * 0.03, 2) * 5.5);
+  }
+
+  hellCeil(x: number, z: number): number {
+    return Math.round(20 + this.hellN.fbm(x * 0.026 + 53.7, z * 0.026 - 21.3, 2) * 3.2);
   }
 
   /** 草地上稀有的野生南瓜 */
@@ -115,10 +147,25 @@ export class Generator {
         const h = this.heightAt(wx, wz);
         const sandy = h <= SEA_LEVEL + 1;
         const snowy = h >= SNOW_LEVEL;
+        const hf = this.hellFloor(wx, wz);
+        const hc = this.hellCeil(wx, wz);
         for (let y = 0; y <= h; y++) {
           let id: number;
           if (y === 0) id = Block.Bedrock;
-          else if (y < h - 3) id = this.oreAt(wx, y, wz);
+          else if (y < LAYER_HELL_TOP) {
+            // 地狱层:灰烬地面 + 熔洞(岩浆海)+ 石顶板,地狱石矿脉
+            if (y <= hf) {
+              const r = hash3(wx, y, wz, this.seed ^ 0x4e11);
+              id = y >= hf - 1 ? Block.Ash : r < 0.06 ? Block.Hellstone : Block.Stone;
+            } else if (y < hc) {
+              id = y <= LAVA_LEVEL ? Block.Lava : Block.Air;
+            } else {
+              const r = hash3(wx, y, wz, this.seed ^ 0x4e11);
+              id = r < 0.05 ? Block.Hellstone : Block.Stone;
+            }
+          } else if (this.caveAt(wx, y, wz, h)) {
+            id = Block.Air;
+          } else if (y < h - 3) id = this.oreAt(wx, y, wz);
           else if (y < h) id = sandy ? Block.Sand : Block.Dirt;
           else id = sandy ? Block.Sand : snowy ? Block.Snow : Block.Grass;
           data[idx(lx, y, lz)] = id;

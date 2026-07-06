@@ -2,7 +2,18 @@
 import * as THREE from 'three';
 import { buildBlockGeometry } from './blockmesh';
 import { baseBlock, Block, BLOCK_DEFS, isWater, PLACEABLE, pumpkinVariant } from './blocks';
-import { EYE_HEIGHT, REACH, RENDER_DISTANCE, CHUNK_SIZE, WORLD_WALL_RADIUS } from './config';
+import {
+  CHUNK_SIZE,
+  EYE_HEIGHT,
+  LAYER_CAVERN_TOP,
+  LAYER_HELL_TOP,
+  LAYER_SKY_BOTTOM,
+  LAYER_UNDERGROUND_TOP,
+  REACH,
+  RENDER_DISTANCE,
+  SEA_LEVEL,
+  WORLD_WALL_RADIUS,
+} from './config';
 import { Input } from './controls';
 import { clockText, computeDayNight, DAY_LENGTH } from './daynight';
 import { FallingBlocks } from './falling';
@@ -255,16 +266,29 @@ function respawn(): void {
   hud.toast('你死了,回到出生点');
 }
 
-mobs.onAttack = (dmg, dirX, dirZ) => {
+function layerNameOf(y: number): string {
+  if (y >= LAYER_SKY_BOTTOM) return '天空层';
+  if (y >= LAYER_UNDERGROUND_TOP) return '地表';
+  if (y >= LAYER_CAVERN_TOP) return '地下层';
+  if (y >= LAYER_HELL_TOP) return '洞穴层';
+  return '地狱';
+}
+
+function damagePlayer(dmg: number, dirX = 0, dirZ = 0): void {
   hp -= dmg;
-  player.vel.x += dirX * 7;
-  player.vel.z += dirZ * 7;
-  player.vel.y = Math.max(player.vel.y, 4.5);
+  if (dirX !== 0 || dirZ !== 0) {
+    player.vel.x += dirX * 7;
+    player.vel.z += dirZ * 7;
+    player.vel.y = Math.max(player.vel.y, 4.5);
+  }
   sound.hurt();
   hud.flashDamage();
   hud.setHearts(hp);
   if (hp <= 0) respawn();
-};
+}
+
+mobs.onAttack = (dmg, dirX, dirZ) => damagePlayer(dmg, dirX, dirZ);
+let lavaTimer = 0;
 mobs.onBurning = (x, y, z) => {
   particles.burst(Math.floor(x), Math.floor(y), Math.floor(z), Block.Snow, 5);
 };
@@ -860,12 +884,21 @@ function frame(now: number): void {
     timeOfDay = (timeOfDay + (dt * (timeFast ? 50 : 1)) / DAY_LENGTH) % 1;
   }
   const dn = computeDayNight(timeOfDay);
-  worldBrightness = dn.brightness;
-  dayUniform.value = dn.brightness; // 方块亮度走 shader 的 max(昼夜, 块光)
-  waterMat.color.setScalar(dn.brightness);
-  drops.setBrightness(dn.brightness);
-  particles.setBrightness(dn.brightness);
-  mobs.setBrightness(dn.brightness);
+  // 深度亮度:地下渐暗,洞穴近黑(火把是核心),地狱有岩浆微光
+  const pyl = player.pos.y;
+  let dayF = dn.brightness;
+  if (pyl < LAYER_HELL_TOP + 3) dayF = 0.3;
+  else if (pyl < LAYER_CAVERN_TOP) dayF = 0.05;
+  else if (pyl < LAYER_UNDERGROUND_TOP) {
+    const t = (pyl - LAYER_CAVERN_TOP) / (LAYER_UNDERGROUND_TOP - LAYER_CAVERN_TOP);
+    dayF = 0.05 + (dn.brightness - 0.05) * t * t;
+  }
+  worldBrightness = dayF;
+  dayUniform.value = dayF; // 方块亮度走 shader 的 max(深度昼夜, 块光)
+  waterMat.color.setScalar(dayF);
+  drops.setBrightness(dayF);
+  particles.setBrightness(dayF);
+  mobs.setBrightness(dayF);
   mobs.nightFactor = dn.starAlpha;
   mobs.daylight = dn.brightness > 0.55;
   // 缓慢回血(4s/点)
@@ -877,11 +910,26 @@ function frame(now: number): void {
       hud.setHearts(hp);
     }
   }
-  falling.setBrightness(dn.brightness);
-  model.setBrightness(dn.brightness);
-  heldMat.color.setScalar(dn.brightness);
-  for (const m of heldToolMats) m.color.setScalar(dn.brightness);
-  hud.setHandBrightness(Math.pow(dn.brightness, 0.45));
+  // 岩浆伤害:身体接触每 0.5s 扣 2 血
+  if (input.locked) {
+    const inLava =
+      world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.2), Math.floor(player.pos.z)) === Block.Lava ||
+      world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 1.2), Math.floor(player.pos.z)) === Block.Lava;
+    if (inLava) {
+      lavaTimer += dt;
+      if (lavaTimer >= 0.5) {
+        lavaTimer = 0;
+        damagePlayer(2);
+      }
+    } else {
+      lavaTimer = 0;
+    }
+  }
+  falling.setBrightness(dayF);
+  model.setBrightness(dayF);
+  heldMat.color.setScalar(dayF);
+  for (const m of heldToolMats) m.color.setScalar(dayF);
+  hud.setHandBrightness(Math.pow(Math.max(dayF, 0.2), 0.45));
 
   // 周期性存档(有改动才写)
   saveTimer += dt;
@@ -922,14 +970,32 @@ function frame(now: number): void {
     ),
   );
 
-  // 雾色/背景色随昼夜(水下用压暗的水色)
+  // 雾色/背景色:水下 > 层氛围(地狱/洞穴/地下)> 地表昼夜
   const fog = scene.fog as THREE.Fog;
+  const py = player.pos.y;
   if (wasUnderwater) {
     fog.color.set(WATER_FOG_COLOR).multiplyScalar(Math.max(dn.brightness, 0.25));
+    fog.near = 1;
+    fog.far = 22;
+  } else if (py < LAYER_HELL_TOP + 3) {
+    fog.color.set(0x2a0c06); // 地狱:暗红热霾
+    fog.near = 8;
+    fog.far = 56;
+  } else if (py < LAYER_CAVERN_TOP) {
+    fog.color.set(0x050507); // 洞穴:漆黑
+    fog.near = 4;
+    fog.far = 34;
+  } else if (py < LAYER_UNDERGROUND_TOP) {
+    fog.color.set(0x0a0a0d); // 地下:昏暗
+    fog.near = 6;
+    fog.far = 44;
   } else {
     fog.color.setRGB(...dn.horizon, THREE.SRGBColorSpace);
+    fog.near = fogFar * 0.55;
+    fog.far = fogFar;
   }
   (scene.background as THREE.Color).copy(fog.color);
+  sky.setVisible(!wasUnderwater && py >= LAYER_UNDERGROUND_TOP);
 
   // 准星目标:高亮 + 挖掘 + 连续放置
   const hit = input.locked
@@ -1087,11 +1153,24 @@ function frame(now: number): void {
     fpsFrames = 0;
     fpsTime = 0;
   }
+  const layerName =
+    player.pos.y >= LAYER_SKY_BOTTOM
+      ? '天空层'
+      : player.pos.y >= LAYER_UNDERGROUND_TOP
+        ? '地表'
+        : player.pos.y >= LAYER_CAVERN_TOP
+          ? '地下层'
+          : player.pos.y >= LAYER_HELL_TOP
+            ? '洞穴层'
+            : '地狱';
+  const depth = Math.round(SEA_LEVEL + 6 - player.pos.y);
   hud.setDebug(
     `FPS ${fpsValue}\n` +
       `XYZ ${player.pos.x.toFixed(1)} / ${player.pos.y.toFixed(1)} / ${player.pos.z.toFixed(1)}\n` +
-      `时间 ${clockText(timeOfDay)}${touch ? '' : '(按住 T 加速)'}`,
+      `时间 ${clockText(timeOfDay)}${touch ? '' : '(按住 T 加速)'}\n` +
+      `${layerName} · 深度 ${depth > 0 ? depth : depth}`,
   );
+  hud.setLayer(layerName, depth);
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -1130,6 +1209,7 @@ if (new URLSearchParams(location.search).has('test')) {
     modelVisible: () => model.group.visible,
     heldId: () => heldShown,
     hp: () => hp,
+    layer: () => ({ name: layerNameOf(player.pos.y), y: player.pos.y }),
     deaths: () => deaths,
     setHp: (v: number) => {
       hp = Math.max(1, Math.min(10, v));

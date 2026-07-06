@@ -40,6 +40,9 @@ export const Tile = {
   DiamondBlock: 31,
   Torch: 32,
   Glowstone: 33,
+  Lava: 34,
+  Ash: 35,
+  Hellstone: 36,
 } as const;
 
 export const Block = {
@@ -80,6 +83,9 @@ export const Block = {
   PumpkinW: 32, // 脸朝 -x
   Torch: 33, // 火把:十字面片,光源 14
   Glowstone: 34, // 萤石:光源 15
+  Lava: 35, // 岩浆:地狱海,接触伤害,视觉自亮(不传播光)
+  Ash: 36, // 灰烬:地狱地表
+  Hellstone: 37, // 地狱石:发光矿,视觉自亮
 } as const;
 
 export interface BlockDef {
@@ -97,6 +103,8 @@ export interface BlockDef {
   needsGround?: boolean;
   /** 重力方块:下方失去支撑时坠落(沙子) */
   gravity?: boolean;
+  /** 视觉自发光 0..1(不参与光照传播,岩浆/地狱石用) */
+  glow?: number;
 }
 
 const T = Tile;
@@ -139,6 +147,9 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '南瓜', tiles: [T.PumpkinSide, T.PumpkinFace, T.PumpkinTop, T.PumpkinTop, T.PumpkinSide, T.PumpkinSide], solid: true, opaque: true, hardness: 0.5 },
   { name: '火把', tiles: [T.Torch, T.Torch, T.Torch, T.Torch, T.Torch, T.Torch], solid: false, opaque: false, hardness: 0.1, light: 14, shape: 'cross', needsGround: true },
   { name: '萤石', tiles: [T.Glowstone, T.Glowstone, T.Glowstone, T.Glowstone, T.Glowstone, T.Glowstone], solid: true, opaque: true, hardness: 0.4, light: 15 },
+  { name: '岩浆', tiles: [T.Lava, T.Lava, T.Lava, T.Lava, T.Lava, T.Lava], solid: false, opaque: false, hardness: Infinity, glow: 0.95 },
+  { name: '灰烬', tiles: [T.Ash, T.Ash, T.Ash, T.Ash, T.Ash, T.Ash], solid: true, opaque: true, hardness: 0.4 },
+  { name: '地狱石', tiles: [T.Hellstone, T.Hellstone, T.Hellstone, T.Hellstone, T.Hellstone, T.Hellstone], solid: true, opaque: true, hardness: 2.4, glow: 0.5 },
 ];
 
 /** 方块发光等级(0..15) */

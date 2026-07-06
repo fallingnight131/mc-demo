@@ -14,7 +14,7 @@ describe('Terraria 3D 大陆结构', () => {
 
   it('世界中心(出生地)是平缓陆地,不是海也不是高山', () => {
     let maxH = 0;
-    let minH = 99;
+    let minH = 999;
     for (let r = 0; r <= 60; r += 10) {
       for (let a = 0; a < 12; a++) {
         const h = gen.heightAt(
@@ -26,7 +26,7 @@ describe('Terraria 3D 大陆结构', () => {
       }
     }
     expect(minH).toBeGreaterThan(SEA_LEVEL - 3); // 至多小水洼
-    expect(maxH).toBeLessThan(45); // 中心无高山
+    expect(maxH).toBeLessThan(SEA_LEVEL + 21); // 中心无高山
   });
 
   it('环形山脉带存在:带内有雪峰,且有山口(可通行谷道)', () => {

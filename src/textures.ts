@@ -278,6 +278,41 @@ const painters: Record<number, Painter> = {
       px(img, (rng() * TS) | 0, (rng() * TS) | 0, 156, 118, 62);
     }
   },
+  [Tile.Lava]: (img, rng) => {
+    // 橙红熔岩 + 亮黄流纹
+    noiseFill(img, rng, [214, 74, 16], 14);
+    for (let i = 0; i < 5; i++) {
+      let x = (rng() * TS) | 0;
+      let y = (rng() * TS) | 0;
+      for (let k = 0; k < 7; k++) {
+        px(img, x % TS, y % TS, 255, 190, 48);
+        x += rng() < 0.5 ? 1 : 0;
+        y += rng() < 0.6 ? 1 : 0;
+      }
+    }
+    for (let i = 0; i < 8; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 120, 26, 10);
+    }
+  },
+  [Tile.Ash]: (img, rng) => {
+    noiseFill(img, rng, [74, 70, 72], 12);
+    for (let i = 0; i < 10; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 52, 48, 50);
+    }
+  },
+  [Tile.Hellstone]: (img, rng) => {
+    // 暗红石底 + 亮橙矿脉
+    noiseFill(img, rng, [96, 40, 34], 10);
+    for (let i = 0; i < 6; i++) {
+      const cx = 1 + ((rng() * (TS - 3)) | 0);
+      const cy = 1 + ((rng() * (TS - 3)) | 0);
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          if (rng() < 0.8) px(img, cx + dx, cy + dy, 250, 140, 40);
+        }
+      }
+    }
+  },
   [Tile.Sandstone]: (img, rng) => {
     // 水平层理的砂岩
     for (let y = 0; y < TS; y++) {

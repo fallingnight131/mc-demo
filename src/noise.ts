@@ -74,3 +74,43 @@ export class Noise2D {
     return sum / norm;
   }
 }
+
+/** 三维值噪声 + fbm(洞穴挖凿用) */
+export class Noise3D {
+  constructor(private readonly seed: number) {}
+
+  private corner(ix: number, iy: number, iz: number): number {
+    return hash3(ix, iy, iz, this.seed);
+  }
+
+  at(x: number, y: number, z: number): number {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const iz = Math.floor(z);
+    const fx = x - ix;
+    const fy = y - iy;
+    const fz = z - iz;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const sz = fz * fz * (3 - 2 * fz);
+    const c000 = this.corner(ix, iy, iz);
+    const c100 = this.corner(ix + 1, iy, iz);
+    const c010 = this.corner(ix, iy + 1, iz);
+    const c110 = this.corner(ix + 1, iy + 1, iz);
+    const c001 = this.corner(ix, iy, iz + 1);
+    const c101 = this.corner(ix + 1, iy, iz + 1);
+    const c011 = this.corner(ix, iy + 1, iz + 1);
+    const c111 = this.corner(ix + 1, iy + 1, iz + 1);
+    const x00 = c000 + (c100 - c000) * sx;
+    const x10 = c010 + (c110 - c010) * sx;
+    const x01 = c001 + (c101 - c001) * sx;
+    const x11 = c011 + (c111 - c011) * sx;
+    const y0 = x00 + (x10 - x00) * sy;
+    const y1 = x01 + (x11 - x01) * sy;
+    return (y0 + (y1 - y0) * sz) * 2 - 1;
+  }
+
+  fbm2(x: number, y: number, z: number): number {
+    return (this.at(x, y, z) + this.at(x * 2 + 31.7, y * 2 + 11.3, z * 2 + 71.9) * 0.5) / 1.5;
+  }
+}

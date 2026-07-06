@@ -1,8 +1,17 @@
 // 全局常量配置
 export const CHUNK_SIZE = 16;
-export const WORLD_HEIGHT = 96;
-export const SEA_LEVEL = 24;
-export const SNOW_LEVEL = 52;
+// Terraria 3D · Phase 2:世界加深,垂直分层(数值均为绝对 y)
+export const WORLD_HEIGHT = 224;
+export const SEA_LEVEL = 128;
+export const SNOW_LEVEL = 156;
+
+// 垂直分层边界(自下而上:地狱 → 洞穴层 → 地下层 → 地表 → 天空)
+export const LAYER_HELL_TOP = 26; // y < 26 地狱
+export const LAYER_CAVERN_TOP = 100; // 26..100 洞穴层(最大层)
+export const LAYER_UNDERGROUND_TOP = 124; // 100..124 地下层
+export const LAYER_SKY_BOTTOM = 182; // y ≥ 182 天空层
+/** 地狱岩浆海液面 */
+export const LAVA_LEVEL = 9;
 
 // --- Terraria 3D:有限世界结构(Phase 1) ---
 /** 大陆基准半径(方块),海岸线在此基础上随噪声起伏 */

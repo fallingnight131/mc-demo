@@ -157,9 +157,11 @@ export function buildChunkGeometry(
             : tileUV(tiles[f.tileIndex]);
           const base = target.positions.length / 3;
 
-          // 面外侧格子的块光,烘进顶点
-          const faceLight =
-            getLight(ox + lx + f.dx, y + f.dy, oz + lz + f.dz) / 15;
+          // 面外侧格子的块光,烘进顶点;自发光方块(岩浆/地狱石)取 glow 下限
+          const faceLight = Math.max(
+            getLight(ox + lx + f.dx, y + f.dy, oz + lz + f.dz) / 15,
+            def.glow ?? 0,
+          );
           for (let i = 0; i < 4; i++) {
             const c = f.corners[i];
             // 顶部顶点统一下沉,侧面随之变矮,避免侧壁高出水面

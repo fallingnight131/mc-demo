@@ -121,6 +121,17 @@ export class HUD {
     el.innerHTML = html;
   }
 
+  /** 深度计:层名 + 深度(变化时才写 DOM) */
+  private layerText = '';
+  setLayer(name: string, depth: number): void {
+    const text = depth > 2 ? `${name} · 深度 ${depth}` : name;
+    if (text === this.layerText) return;
+    this.layerText = text;
+    const el = document.getElementById('depth-meter')!;
+    el.textContent = text;
+    el.classList.toggle('deep', name !== '地表' && name !== '天空层');
+  }
+
   /** 受击红闪 */
   flashDamage(): void {
     const el = document.getElementById('damage-tint')!;

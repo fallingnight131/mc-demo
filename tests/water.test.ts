@@ -10,7 +10,7 @@ function makeWorld(): World {
   return w;
 }
 
-const PLATFORM_Y = 60; // 高于附近地形,保证测试环境可控
+const PLATFORM_Y = 195; // 高于附近地形(新地表最高 184),保证测试环境可控
 
 /** 在 y=60 搭一块 9x9 石台,中心可放水源 */
 function buildPlatform(world: World): void {
@@ -93,16 +93,16 @@ describe('water flow', () => {
     world.setBlock(0, PLATFORM_Y + 1, 0, Block.Water);
     for (let i = 0; i < 8; i++) world.water.tick();
     world.setBlock(2, PLATFORM_Y, 0, Block.Air); // 开洞成瀑布
-    // 落到地表(约 y=29)需要 ~35 tick
-    for (let i = 0; i < 45; i++) world.water.tick();
-    const cells = world.water.sampleLandings(3, 2, 0, 60);
+    // 从平台(195)落到地表(约 131)需要 ~65 tick
+    for (let i = 0; i < 85; i++) world.water.tick();
+    const cells = world.water.sampleLandings(3, 2, 0, 90);
     expect(cells.length).toBeGreaterThan(0);
     for (const [x, y, z] of cells) {
       expect(isWater(world.getBlock(x, y, z))).toBe(true);
       expect(isWater(world.getBlock(x, y + 1, z))).toBe(true); // 上有来水
     }
-    // 流水氛围声:站在瀑布旁能查到很近的落点,远处则查不到
-    const near = world.water.nearestLandingDist(2.5, 30, 0.5);
+    // 流水氛围声:站在瀑布落点旁能查到很近的落点,远处则查不到
+    const near = world.water.nearestLandingDist(cells[0][0] + 0.5, cells[0][1], cells[0][2] + 0.5);
     expect(near).toBeLessThan(6);
     expect(world.water.nearestLandingDist(500, 30, 500)).toBeGreaterThan(400);
   });

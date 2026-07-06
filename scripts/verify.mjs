@@ -741,7 +741,7 @@ await page.evaluate(() => window.__game.mobs.setAutoSpawn(true));
 // --- 水流:挖开湖岸,水应当涌入缺口 ---
 const shore = await page.evaluate(() => {
   const g = window.__game;
-  const SEA = 24;
+  const SEA = 128;
   for (let r = 4; r < 120; r++) {
     for (let a = 0; a < 24; a++) {
       const x = Math.round(Math.cos((a / 24) * Math.PI * 2) * r);
@@ -770,11 +770,11 @@ if (shore) {
   }, shore);
   await page.waitForTimeout(500);
   // 挖开岸边方块(等价于玩家挖掘的结果)
-  await page.evaluate(({ bx, bz }) => window.__game.world.setBlock(bx, 24, bz, 0), shore);
+  await page.evaluate(({ bx, bz }) => window.__game.world.setBlock(bx, 128, bz, 0), shore);
   await page.waitForTimeout(2200); // 等待水流 tick
   const filled = await page.evaluate(
     ({ bx, bz }) => {
-      const id = window.__game.world.getBlock(bx, 24, bz);
+      const id = window.__game.world.getBlock(bx, 128, bz);
       return { id, isWater: id === 10 || (id >= 13 && id <= 16) };
     },
     shore,
@@ -792,7 +792,7 @@ const water = await page.evaluate(() => {
     for (let a = 0; a < 16; a++) {
       const x = Math.round(Math.cos((a / 16) * Math.PI * 2) * r);
       const z = Math.round(Math.sin((a / 16) * Math.PI * 2) * r);
-      if (g.world.gen.heightAt(x, z) <= 24 - 3) return { x, z };
+      if (g.world.gen.heightAt(x, z) <= 128 - 3) return { x, z };
     }
   }
   return null;
@@ -801,7 +801,7 @@ if (water) {
   await page.evaluate(({ x, z }) => {
     const g = window.__game;
     g.world.warmup(Math.floor(x / 16), Math.floor(z / 16));
-    g.player.pos.set(x + 0.5, 22, z + 0.5);
+    g.player.pos.set(x + 0.5, 126, z + 0.5);
     g.player.vel.set(0, 0, 0);
   }, water);
   await page.waitForTimeout(600);
@@ -831,7 +831,7 @@ if (water) {
 // --- 出水上岸:在水里贴着岸推进 + 跳跃,应能翻上 1 格高的沙岸 ---
 const shore2 = await page.evaluate((skip) => {
   const g = window.__game;
-  const SEA = 24;
+  const SEA = 128;
   for (let r = 4; r < 120; r++) {
     for (let a = 0; a < 24; a++) {
       const x = Math.round(Math.cos((a / 24) * Math.PI * 2) * r);
@@ -852,7 +852,7 @@ if (shore2) {
     const g = window.__game;
     g.world.warmup(Math.floor(ax / 16), Math.floor(az / 16));
     // 站进岸边的水里,面向沙岸
-    g.player.pos.set(ax + 0.5, 24.2, az + 0.5);
+    g.player.pos.set(ax + 0.5, 128.2, az + 0.5);
     g.player.vel.set(0, 0, 0);
     g.player.pitch = -0.2;
     g.player.yaw = Math.atan2(-(bx - ax), -(bz - az));
@@ -871,8 +871,8 @@ if (shore2) {
   });
   check(
     '游泳出水上岸',
-    wet && !after.wet && after.y >= 24.9,
-    `入水 ${wet} → 出水 ${!after.wet},最终高度 y=${after.y.toFixed(2)}(岸面 25)`,
+    wet && !after.wet && after.y >= 128.9,
+    `入水 ${wet} → 出水 ${!after.wet},最终高度 y=${after.y.toFixed(2)}(岸面 129)`,
   );
   await page.screenshot({ path: `${OUT}/6b-climb-out.png` });
 } else {
@@ -908,7 +908,7 @@ check(
 // --- 地底坏存档自救:读档位置嵌在石头里 → 回到出生点 ---
 await page.evaluate(() => {
   const g = window.__game;
-  g.player.pos.set(g.spawn.x, 3, g.spawn.z); // 卡进地底深处
+  g.player.pos.set(g.spawn.x, 1, g.spawn.z); // 卡进地底深处(地狱底部石层)
   g.player.vel.set(0, 0, 0);
   g.save();
 });
@@ -927,8 +927,8 @@ const rescued = await page.evaluate(() => {
 });
 check(
   '地底坏存档自救',
-  rescued.y > 20 && rescued.nearXZ,
-  `读档位置 y=${rescued.y.toFixed(1)}(卡死点 y=3,出生点 y=${rescued.spawnY.toFixed(1)},水平回位 ${rescued.nearXZ})`,
+  rescued.y > 100 && rescued.nearXZ,
+  `读档位置 y=${rescued.y.toFixed(1)}(卡死点 y=1,出生点 y=${rescued.spawnY.toFixed(1)},水平回位 ${rescued.nearXZ})`,
 );
 
 // --- 清除存档:重开后存档为空、回到全新世界(回归:reload 时自动存档不得写回) ---
@@ -1273,7 +1273,7 @@ await page.evaluate(() => {
   g.mobs.setAutoSpawn(false);
   g.mobs.clear();
   // 传送到边界内 3 格的海面上,面朝正外(+x)
-  g.player.pos.set(617, 26, 0);
+  g.player.pos.set(617, 130, 0);
   g.player.vel.set(0, 0, 0);
   g.player.yaw = -Math.PI / 2;
   g.player.pitch = 0;
@@ -1302,7 +1302,7 @@ const wallOut = await page.evaluate(() => {
   let placed = 0;
   for (let dx = 0; dx <= 8; dx++) {
     for (let dy = -4; dy <= 2; dy++) {
-      if (g.world.getBlock(620 + dx, 26 + dy, 0) === 8) placed++;
+      if (g.world.getBlock(620 + dx, 130 + dy, 0) === 8) placed++;
     }
   }
   return placed;
@@ -1318,7 +1318,7 @@ await page.evaluate(() => {
   const g = window.__game;
   g.world.warmup(0, Math.floor(-120 / 16));
   const h = g.world.gen.heightAt(0, -120);
-  g.player.pos.set(0.5, Math.max(h + 1.01, 27), -119.5);
+  g.player.pos.set(0.5, Math.max(h + 1.01, 131), -119.5);
   g.player.vel.set(0, 0, 0);
   g.player.yaw = 0; // 面向 -z(山脉带方向)
   g.player.pitch = 0.08;
@@ -1332,6 +1332,150 @@ await page.evaluate(() => {
   g.player.vel.set(0, 0, 0);
   g.mobs.setAutoSpawn(true);
 });
+await page.waitForTimeout(600);
+
+// --- Terraria 3D · Phase 2:垂直分层/洞穴/地狱/岩浆/深度计 ---
+// 洞穴层:找一个洞传送进去,应漆黑(雾深),放火把照亮
+const caveSpot = await page.evaluate(() => {
+  const g = window.__game;
+  for (let dx = 0; dx < 40; dx++) {
+    for (let y = 40; y < 96; y++) {
+      const x = Math.floor(g.spawn.x) + dx;
+      const z = Math.floor(g.spawn.z);
+      if (
+        g.world.getBlock(x, y, z) === 0 &&
+        g.world.getBlock(x, y + 1, z) === 0 &&
+        g.world.isSolid(x, y - 1, z)
+      ) {
+        g.player.pos.set(x + 0.5, y + 0.01, z + 0.5);
+        g.player.vel.set(0, 0, 0);
+        g.player.yaw = 0;
+        g.player.pitch = -0.1;
+        return { x, y, z };
+      }
+    }
+  }
+  return null;
+});
+await page.waitForTimeout(600);
+if (caveSpot) {
+  const caveEnv = await page.evaluate(() => {
+    const g = window.__game;
+    const meter = document.getElementById('depth-meter').textContent;
+    return { layer: g.layer().name, fog: g.env().fog, meter };
+  });
+  // 放火把照亮洞穴
+  await page.keyboard.press('Digit5');
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(250);
+  await page.click('#inv-grid .inv-slot[title="火把"]');
+  await page.waitForTimeout(250);
+  await page.evaluate(() => {
+    const g = window.__game;
+    g.player.yaw = 0;
+    g.player.pitch = -0.9;
+  });
+  await page.mouse.down();
+  await page.waitForTimeout(60);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${OUT}/21-cavern-torch.png` });
+  const fogLum2 = caveEnv.fog[0] + caveEnv.fog[1] + caveEnv.fog[2];
+  check(
+    '洞穴层:漆黑氛围与深度计',
+    caveEnv.layer === '洞穴层' && fogLum2 < 0.15 && caveEnv.meter.includes('洞穴'),
+    `层 ${caveEnv.layer},雾亮度 ${fogLum2.toFixed(3)},深度计 "${caveEnv.meter}"`,
+  );
+} else {
+  check('洞穴层:漆黑氛围与深度计', false, '未找到洞穴');
+}
+await page.keyboard.press('Digit1');
+
+// 地狱:传送到熔洞,断言层/雾/岩浆存在,截图
+const hellInfo = await page.evaluate(() => {
+  const g = window.__game;
+  const sx = Math.floor(g.spawn.x);
+  const sz = Math.floor(g.spawn.z);
+  // 区域搜索:找灰烬岸(高出岩浆海的地面)落脚
+  for (let dx = -38; dx <= 38; dx += 2) {
+    for (let dz = -38; dz <= 38; dz += 2) {
+      const x = sx + dx;
+      const z = sz + dz;
+      for (let y = 10; y < 19; y++) {
+        if (
+          g.world.getBlock(x, y, z) === 0 &&
+          g.world.getBlock(x, y + 1, z) === 0 &&
+          g.world.isSolid(x, y - 1, z)
+        ) {
+          g.player.pos.set(x + 0.5, y + 0.01, z + 0.5);
+          g.player.vel.set(0, 0, 0);
+          g.player.yaw = Math.PI / 2;
+          g.player.pitch = -0.1;
+          let lava = 0;
+          for (let ax = -20; ax <= 20; ax++) {
+            for (let az = -20; az <= 20; az++) {
+              for (let ay = 2; ay <= 9; ay++) {
+                if (g.world.getBlock(x + ax, ay, z + az) === 35) lava++;
+              }
+            }
+          }
+          return { y, lava };
+        }
+      }
+    }
+  }
+  return null;
+});
+await page.waitForTimeout(600);
+if (hellInfo) {
+  const hellEnv = await page.evaluate(() => ({
+    layer: window.__game.layer().name,
+    fog: window.__game.env().fog,
+    meter: document.getElementById('depth-meter').textContent,
+  }));
+  await page.screenshot({ path: `${OUT}/21b-hell.png` });
+  check(
+    '地狱:岩浆海与暗红氛围',
+    hellEnv.layer === '地狱' && hellInfo.lava > 50 && hellEnv.fog[0] > hellEnv.fog[2],
+    `层 ${hellEnv.layer},附近岩浆 ${hellInfo.lava} 格,雾偏红 ${hellEnv.fog[0] > hellEnv.fog[2]},深度计 "${hellEnv.meter}"`,
+  );
+  // 岩浆伤害:跳进岩浆 1.3s
+  const hpBefore = await page.evaluate(() => {
+    const g = window.__game;
+    g.setHp(10);
+    const x = Math.floor(g.player.pos.x);
+    const z = Math.floor(g.player.pos.z);
+    for (let r = 1; r < 30; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (g.world.getBlock(x + dx, 8, z + dz) === 35) {
+            g.player.pos.set(x + dx + 0.5, 8.2, z + dz + 0.5);
+            g.player.vel.set(0, 0, 0);
+            return g.hp();
+          }
+        }
+      }
+    }
+    return -1;
+  });
+  await page.waitForTimeout(1300);
+  const hpAfter = await page.evaluate(() => {
+    const g = window.__game;
+    const hp = g.hp();
+    g.player.pos.set(g.spawn.x, g.spawn.y + 1, g.spawn.z);
+    g.player.vel.set(0, 0, 0);
+    g.setHp(10);
+    return hp;
+  });
+  check(
+    '岩浆:接触伤害',
+    hpBefore === 10 && hpAfter < 10,
+    `入岩浆前 HP=${hpBefore},1.3s 后 HP=${hpAfter}`,
+  );
+} else {
+  check('地狱:岩浆海与暗红氛围', false, '未找到地狱落脚点');
+  check('岩浆:接触伤害', false, '未找到地狱落脚点');
+}
 await page.waitForTimeout(600);
 
 // --- 环顾远景 ---
