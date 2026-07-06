@@ -33,6 +33,8 @@ export class Generator {
   private readonly cave2: Noise3D;
   private readonly cheese: Noise3D;
   private readonly hellN: Noise2D;
+  private readonly biomeN: Noise2D;
+  private readonly chasmN: Noise2D;
 
   constructor(seed: number) {
     this.seed = seed;
@@ -43,7 +45,15 @@ export class Generator {
     this.cave2 = new Noise3D(seed ^ 0x77ca5e);
     this.cheese = new Noise3D(seed ^ 0x33ca5e);
     this.hellN = new Noise2D(seed ^ 0x66e11);
+    this.biomeN = new Noise2D(seed ^ 0xb10e);
+    this.chasmN = new Noise2D(seed ^ 0xc4a5);
+    // 三条河的方位角(确定性),从山脉外坡流向海
+    this.riverAngles = [0, 1, 2].map(
+      (i) => hash2(i * 17 + 3, i * 31 + 7, seed ^ 0x11e4) * Math.PI * 2,
+    );
   }
+
+  private readonly riverAngles: number[];
 
   /**
    * 地表高度 —— Terraria 3D 结构化大陆:
@@ -73,12 +83,63 @@ export class Generator {
     const ridge = Math.pow(Math.max(0, r), 2.2);
     const landH = base + ridge * mask * 46;
 
-    const h = seabed * (1 - land) + landH * land;
+    let h = seabed * (1 - land) + landH * land;
+    // 河流:河道压到海平面下,两岸谷坡平滑过渡
+    const rd = this.riverDist(x, z);
+    if (rd < 20) {
+      const bed = SEA_LEVEL - 2.5;
+      if (rd < 6) h = Math.min(h, bed);
+      else h = Math.min(h, bed + ((rd - 6) / 14) * Math.max(6, (h - bed) * 0.7));
+    }
     return Math.max(LAYER_HELL_TOP + 4, Math.min(WH - 40, Math.floor(h)));
   }
 
+  /**
+   * 群系按方位分区(泰拉式"位置决定群系"):
+   * 出生盆地与环山恒为森林;环山之外按方位角划出丛林与腐化之地。
+   */
+  biomeAt(x: number, z: number): 'forest' | 'jungle' | 'corruption' {
+    const d = Math.hypot(x, z);
+    if (d < 225) return 'forest'; // 出生盆地与山脉(群系从山外坡开始)
+    let a = Math.atan2(z, x); // -π..π
+    a += this.biomeN.fbm(x * 0.006, z * 0.006, 2) * 0.35; // 边界扰动
+    if (a < 0) a += Math.PI * 2;
+    if (a > 0.5 && a < 1.9) return 'jungle';
+    if (a > 3.1 && a < 4.3) return 'corruption';
+    return 'forest';
+  }
+
+  /** 到最近河道中心的横向距离(河从山脉流向海,径向蜿蜒) */
+  private riverDist(x: number, z: number): number {
+    const d = Math.hypot(x, z);
+    if (d < 215 || d > CONTINENT_RADIUS + 80) return 999;
+    let a = Math.atan2(z, x);
+    if (a < 0) a += Math.PI * 2;
+    let best = 999;
+    for (const ra of this.riverAngles) {
+      // 河心线随径向距离蜿蜒
+      const meander = this.coast.fbm(Math.cos(ra) * 7.7 + d * 0.012, Math.sin(ra) * 7.7, 2) * 0.14;
+      let da = Math.abs(a - (ra + meander));
+      if (da > Math.PI) da = Math.PI * 2 - da;
+      best = Math.min(best, da * d); // 弧长≈横向距离
+    }
+    return best;
+  }
+
+  /** 腐化深谷:腐化区内蜿蜒裂缝,从地表直插洞穴层 */
+  chasmAt(x: number, z: number): boolean {
+    if (this.biomeAt(x, z) !== 'corruption') return false;
+    const d = Math.hypot(x, z);
+    if (d < 250 || d > CONTINENT_RADIUS - 60) return false;
+    return Math.abs(this.chasmN.fbm(x * 0.012, z * 0.012, 2)) < 0.035;
+  }
+
   hasTree(x: number, z: number): boolean {
-    return hash2(x, z, this.seed ^ 0x51ab3) < 0.007;
+    const t = hash2(x, z, this.seed ^ 0x51ab3);
+    const b = this.biomeAt(x, z);
+    if (b === 'jungle') return t < 0.03; // 丛林茂密
+    if (b === 'corruption') return t < 0.005; // 腐化稀疏枯树
+    return t < 0.007;
   }
 
   /** 石头层中按深度概率撒矿石(洞穴层越深越出好矿) */
@@ -147,6 +208,8 @@ export class Generator {
         const h = this.heightAt(wx, wz);
         const sandy = h <= SEA_LEVEL + 1;
         const snowy = h >= SNOW_LEVEL;
+        const biome = this.biomeAt(wx, wz);
+        const chasm = this.chasmAt(wx, wz);
         const hf = this.hellFloor(wx, wz);
         const hc = this.hellCeil(wx, wz);
         for (let y = 0; y <= h; y++) {
@@ -163,18 +226,27 @@ export class Generator {
               const r = hash3(wx, y, wz, this.seed ^ 0x4e11);
               id = r < 0.05 ? Block.Hellstone : Block.Stone;
             }
+          } else if (chasm && y > 56) {
+            id = Block.Air; // 腐化深谷:从地表直插洞穴层
           } else if (this.caveAt(wx, y, wz, h)) {
             id = Block.Air;
-          } else if (y < h - 3) id = this.oreAt(wx, y, wz);
-          else if (y < h) id = sandy ? Block.Sand : Block.Dirt;
-          else id = sandy ? Block.Sand : snowy ? Block.Snow : Block.Grass;
+          } else if (y < h - 3) {
+            id = this.oreAt(wx, y, wz);
+            // 腐化区浅层石头换黑檀石
+            if (biome === 'corruption' && id === Block.Stone && y > h - 14) id = Block.EbonStone;
+          } else if (y < h) id = sandy ? Block.Sand : Block.Dirt;
+          else if (sandy) id = Block.Sand;
+          else if (snowy) id = Block.Snow;
+          else if (biome === 'jungle') id = Block.JungleGrass;
+          else if (biome === 'corruption') id = Block.CorruptGrass;
+          else id = Block.Grass;
           data[idx(lx, y, lz)] = id;
         }
         for (let y = h + 1; y <= SEA_LEVEL; y++) {
           data[idx(lx, y, lz)] = Block.Water;
         }
-        // 草地上的野生南瓜(避开树),朝向按位置确定性随机
-        if (!sandy && !snowy && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && this.hasPumpkin(wx, wz)) {
+        // 草地上的野生南瓜(避开树与深谷),朝向按位置确定性随机
+        if (!sandy && !snowy && !chasm && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && this.hasPumpkin(wx, wz)) {
           const face = [Block.Pumpkin, Block.PumpkinE, Block.PumpkinN, Block.PumpkinW];
           data[idx(lx, h + 1, lz)] = face[(hash2(wx, wz, this.seed ^ 0x9c1a) * 4) | 0];
         }
@@ -190,8 +262,18 @@ export class Generator {
         if (!this.hasTree(wx, wz)) continue;
         const h = this.heightAt(wx, wz);
         if (h <= SEA_LEVEL + 1 || h >= SNOW_LEVEL - 4) continue;
+        if (this.chasmAt(wx, wz)) continue; // 深谷口不长树
 
-        const ht = this.treeHeight(wx, wz);
+        const treeBiome = this.biomeAt(wx, wz);
+        // 丛林树更高大;腐化树矮小紫叶
+        const leafId =
+          treeBiome === 'jungle'
+            ? Block.JungleLeaves
+            : treeBiome === 'corruption'
+              ? Block.CorruptLeaves
+              : Block.Leaves;
+        const extra = treeBiome === 'jungle' ? 3 : treeBiome === 'corruption' ? 0 : 0;
+        const ht = this.treeHeight(wx, wz) + extra;
         const topY = h + ht;
         for (let ly = topY - 2; ly <= topY + 1; ly++) {
           const r = ly <= topY - 1 ? 2 : 1;
@@ -208,7 +290,7 @@ export class Generator {
               ) {
                 continue;
               }
-              setIfSoft(tx + oxl, ly, tz + ozl, Block.Leaves);
+              setIfSoft(tx + oxl, ly, tz + ozl, leafId);
             }
           }
         }

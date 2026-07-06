@@ -1,7 +1,7 @@
 // 方块与纹理图集定义(纯数据,不依赖 DOM)
 
 export const ATLAS_COLS = 8;
-export const ATLAS_ROWS = 5;
+export const ATLAS_ROWS = 6;
 export const TILE_PX = 16;
 
 // 图集中的纹理格索引
@@ -43,6 +43,11 @@ export const Tile = {
   Lava: 34,
   Ash: 35,
   Hellstone: 36,
+  JungleGrass: 37,
+  CorruptGrass: 38,
+  EbonStone: 39,
+  JungleLeaves: 40,
+  CorruptLeaves: 41,
 } as const;
 
 export const Block = {
@@ -86,6 +91,11 @@ export const Block = {
   Lava: 35, // 岩浆:地狱海,接触伤害,视觉自亮(不传播光)
   Ash: 36, // 灰烬:地狱地表
   Hellstone: 37, // 地狱石:发光矿,视觉自亮
+  JungleGrass: 38, // 丛林草地
+  CorruptGrass: 39, // 腐化草地
+  EbonStone: 40, // 腐化石(黑檀石)
+  JungleLeaves: 41, // 丛林树叶
+  CorruptLeaves: 42, // 腐化树叶
 } as const;
 
 export interface BlockDef {
@@ -150,6 +160,11 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '岩浆', tiles: [T.Lava, T.Lava, T.Lava, T.Lava, T.Lava, T.Lava], solid: false, opaque: false, hardness: Infinity, glow: 0.95 },
   { name: '灰烬', tiles: [T.Ash, T.Ash, T.Ash, T.Ash, T.Ash, T.Ash], solid: true, opaque: true, hardness: 0.4 },
   { name: '地狱石', tiles: [T.Hellstone, T.Hellstone, T.Hellstone, T.Hellstone, T.Hellstone, T.Hellstone], solid: true, opaque: true, hardness: 2.4, glow: 0.5 },
+  { name: '丛林草', tiles: [T.JungleGrass, T.JungleGrass, T.JungleGrass, T.Dirt, T.JungleGrass, T.JungleGrass], solid: true, opaque: true, hardness: 0.45 },
+  { name: '腐化草', tiles: [T.CorruptGrass, T.CorruptGrass, T.CorruptGrass, T.CorruptGrass, T.CorruptGrass, T.CorruptGrass], solid: true, opaque: true, hardness: 0.45 },
+  { name: '黑檀石', tiles: [T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone], solid: true, opaque: true, hardness: 1.4 },
+  { name: '丛林树叶', tiles: [T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves], solid: true, opaque: true, hardness: 0.2 },
+  { name: '腐化树叶', tiles: [T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves], solid: true, opaque: true, hardness: 0.2 },
 ];
 
 /** 方块发光等级(0..15) */

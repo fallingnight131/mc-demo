@@ -45,6 +45,8 @@ const fogFar = RENDER_DISTANCE * CHUNK_SIZE * 0.92;
 scene.fog = new THREE.Fog(SKY_COLOR, fogFar * 0.55, fogFar);
 
 const WATER_FOG_COLOR = 0x2456b0;
+const JUNGLE_TINT = new THREE.Color(0x7ec98f);
+const CORRUPT_TINT = new THREE.Color(0x8f7cb8);
 const waterTintEl = document.getElementById('water-tint')!;
 let wasUnderwater = false;
 
@@ -991,6 +993,10 @@ function frame(now: number): void {
     fog.far = 44;
   } else {
     fog.color.setRGB(...dn.horizon, THREE.SRGBColorSpace);
+    // 群系色调:丛林偏绿、腐化偏紫
+    const biome = world.gen.biomeAt(player.pos.x, player.pos.z);
+    if (biome === 'jungle') fog.color.lerp(JUNGLE_TINT, 0.22);
+    else if (biome === 'corruption') fog.color.lerp(CORRUPT_TINT, 0.3);
     fog.near = fogFar * 0.55;
     fog.far = fogFar;
   }
@@ -1164,13 +1170,19 @@ function frame(now: number): void {
             ? '洞穴层'
             : '地狱';
   const depth = Math.round(SEA_LEVEL + 6 - player.pos.y);
+  const biomeLabel =
+    layerName === '地表'
+      ? { forest: '森林', jungle: '丛林', corruption: '腐化之地' }[
+          world.gen.biomeAt(player.pos.x, player.pos.z)
+        ]
+      : layerName;
   hud.setDebug(
     `FPS ${fpsValue}\n` +
       `XYZ ${player.pos.x.toFixed(1)} / ${player.pos.y.toFixed(1)} / ${player.pos.z.toFixed(1)}\n` +
       `时间 ${clockText(timeOfDay)}${touch ? '' : '(按住 T 加速)'}\n` +
       `${layerName} · 深度 ${depth > 0 ? depth : depth}`,
   );
-  hud.setLayer(layerName, depth);
+  hud.setLayer(biomeLabel, depth);
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -1210,6 +1222,7 @@ if (new URLSearchParams(location.search).has('test')) {
     heldId: () => heldShown,
     hp: () => hp,
     layer: () => ({ name: layerNameOf(player.pos.y), y: player.pos.y }),
+    biome: () => world.gen.biomeAt(player.pos.x, player.pos.z),
     deaths: () => deaths,
     setHp: (v: number) => {
       hp = Math.max(1, Math.min(10, v));

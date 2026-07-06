@@ -313,6 +313,38 @@ const painters: Record<number, Painter> = {
       }
     }
   },
+  [Tile.JungleGrass]: (img, rng) => {
+    noiseFill(img, rng, [52, 128, 42], 12);
+    for (let i = 0; i < 16; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 36, 100, 30);
+    }
+  },
+  [Tile.CorruptGrass]: (img, rng) => {
+    noiseFill(img, rng, [108, 88, 140], 11);
+    for (let i = 0; i < 14; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 82, 62, 112);
+    }
+  },
+  [Tile.EbonStone]: (img, rng) => {
+    noiseFill(img, rng, [62, 52, 84], 8);
+    for (let i = 0; i < 6; i++) {
+      const sx = (rng() * TS) | 0;
+      const sy = (rng() * TS) | 0;
+      for (let k = 0; k < 3; k++) px(img, (sx + k) % TS, sy, 48, 40, 68);
+    }
+  },
+  [Tile.JungleLeaves]: (img, rng) => {
+    noiseFill(img, rng, [34, 96, 30], 16);
+    for (let i = 0; i < 14; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 22, 72, 22);
+    }
+  },
+  [Tile.CorruptLeaves]: (img, rng) => {
+    noiseFill(img, rng, [96, 68, 130], 14);
+    for (let i = 0; i < 12; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 70, 46, 100);
+    }
+  },
   [Tile.Sandstone]: (img, rng) => {
     // 水平层理的砂岩
     for (let y = 0; y < TS; y++) {

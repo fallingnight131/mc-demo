@@ -1334,6 +1334,78 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(600);
 
+// --- Terraria 3D · Phase 3:生物群系(丛林/腐化/深谷/河流) ---
+const biomeSpots = await page.evaluate(() => {
+  const g = window.__game;
+  const find = (biome, a0, a1) => {
+    for (let a = a0; a < a1; a += 0.05) {
+      for (let d = 250; d < 335; d += 8) {
+        const x = Math.round(Math.cos(a) * d);
+        const z = Math.round(Math.sin(a) * d);
+        if (g.world.gen.biomeAt(x, z) === biome && g.world.gen.heightAt(x, z) > 130) {
+          return { x, z };
+        }
+      }
+    }
+    return null;
+  };
+  return { jungle: find('jungle', 0.85, 1.6), corruption: find('corruption', 3.45, 4.0) };
+});
+if (biomeSpots.jungle) {
+  await page.evaluate(({ x, z }) => {
+    const g = window.__game;
+    g.world.warmup(Math.floor(x / 16), Math.floor(z / 16));
+    g.player.pos.set(x + 0.5, g.world.gen.heightAt(x, z) + 1.01, z + 0.5);
+    g.player.vel.set(0, 0, 0);
+    g.player.yaw = Math.PI / 3;
+    g.player.pitch = 0.05;
+  }, biomeSpots.jungle);
+  await page.waitForTimeout(1600);
+  const jungleHud = await page.evaluate(() => ({
+    biome: window.__game.biome(),
+    meter: document.getElementById('depth-meter').textContent,
+  }));
+  await page.screenshot({ path: `${OUT}/22-jungle.png` });
+  check(
+    '群系:丛林',
+    jungleHud.biome === 'jungle' && jungleHud.meter.includes('丛林'),
+    `biome=${jungleHud.biome},深度计 "${jungleHud.meter}"`,
+  );
+} else {
+  check('群系:丛林', false, '未找到丛林陆地');
+}
+if (biomeSpots.corruption) {
+  await page.evaluate(({ x, z }) => {
+    const g = window.__game;
+    g.world.warmup(Math.floor(x / 16), Math.floor(z / 16));
+    g.player.pos.set(x + 0.5, g.world.gen.heightAt(x, z) + 1.01, z + 0.5);
+    g.player.vel.set(0, 0, 0);
+    g.player.yaw = -Math.PI / 4;
+    g.player.pitch = 0.02;
+  }, biomeSpots.corruption);
+  await page.waitForTimeout(1600);
+  const corruptHud = await page.evaluate(() => ({
+    biome: window.__game.biome(),
+    meter: document.getElementById('depth-meter').textContent,
+  }));
+  await page.screenshot({ path: `${OUT}/22b-corruption.png` });
+  check(
+    '群系:腐化之地',
+    corruptHud.biome === 'corruption' && corruptHud.meter.includes('腐化'),
+    `biome=${corruptHud.biome},深度计 "${corruptHud.meter}"`,
+  );
+} else {
+  check('群系:腐化之地', false, '未找到腐化陆地');
+}
+// 回到出生点
+await page.evaluate(() => {
+  const g = window.__game;
+  g.world.warmup(Math.floor(g.spawn.x / 16), Math.floor(g.spawn.z / 16));
+  g.player.pos.set(g.spawn.x, g.spawn.y + 1, g.spawn.z);
+  g.player.vel.set(0, 0, 0);
+});
+await page.waitForTimeout(800);
+
 // --- Terraria 3D · Phase 2:垂直分层/洞穴/地狱/岩浆/深度计 ---
 // 洞穴层:找一个洞传送进去,应漆黑(雾深),放火把照亮
 const caveSpot = await page.evaluate(() => {
