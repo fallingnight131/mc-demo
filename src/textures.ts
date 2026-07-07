@@ -259,6 +259,81 @@ const painters: Record<number, Painter> = {
     px(img, 7, 2, 255, 200, 80);
     px(img, 8, 2, 255, 200, 80);
   },
+  // 植被十字面片纹理(透明底,createImageData 默认全透明):
+  [Tile.TallGrass]: (img, rng) => {
+    // 森林青草:五片向外倾斜的草叶,叶尖更亮
+    const base = 15;
+    const blades = [
+      { x0: 5, top: 7, lean: -0.35 },
+      { x0: 7, top: 4, lean: -0.12 },
+      { x0: 8, top: 3, lean: 0.1 },
+      { x0: 10, top: 6, lean: 0.32 },
+      { x0: 12, top: 8, lean: 0.5 },
+    ];
+    for (const b of blades) {
+      for (let y = base; y >= b.top; y--) {
+        const x = Math.round(b.x0 + (base - y) * b.lean);
+        const t = (base - y) / (base - b.top); // 0 基部 → 1 叶尖
+        const v = (rng() * 2 - 1) * 10;
+        px(img, x, y, clamp255(70 + v + t * 18), clamp255(116 + v + t * 46), clamp255(42 + v + t * 12));
+      }
+    }
+  },
+  [Tile.Flower]: (img, rng) => {
+    void rng;
+    // 野花:两根绿茎 + 红花(黄蕊)+ 黄花(橙蕊)+ 少许草叶
+    for (let y = 5; y <= 15; y++) px(img, 9, y, 58, 128, 50);
+    for (let y = 8; y <= 15; y++) px(img, 5, y, 58, 128, 50);
+    for (const [x, y] of [[11, 13], [12, 14], [12, 15], [3, 12], [3, 13]]) px(img, x, y, 70, 130, 46);
+    for (const [x, y] of [[9, 2], [8, 3], [10, 3], [8, 4], [10, 4], [9, 5]]) px(img, x, y, 214, 62, 60);
+    px(img, 9, 3, 246, 214, 78);
+    px(img, 9, 4, 246, 214, 78);
+    for (const [x, y] of [[5, 5], [4, 6], [6, 6], [4, 7], [6, 7], [5, 8]]) px(img, x, y, 238, 200, 66);
+    px(img, 5, 6, 236, 128, 44);
+    px(img, 5, 7, 236, 128, 44);
+  },
+  [Tile.JungleFern]: (img, rng) => {
+    void rng;
+    // 丛林蕨:深绿中轴 + 自下而上外展的成对羽叶 + 顶芽
+    const dark = [38, 92, 38];
+    const mid = [52, 120, 46];
+    const lite = [76, 152, 58];
+    for (let y = 2; y <= 15; y++) px(img, 8, y, dark[0], dark[1], dark[2]);
+    for (let y = 4; y <= 14; y += 2) {
+      const spread = Math.max(1, Math.round((15 - y) * 0.6));
+      for (let s = 1; s <= spread; s++) {
+        const c = s >= spread ? lite : mid;
+        const yy = y + (s >> 1); // 羽叶略下垂
+        px(img, 8 - s, yy, c[0], c[1], c[2]);
+        px(img, 8 + s, yy, c[0], c[1], c[2]);
+      }
+    }
+    px(img, 8, 2, lite[0], lite[1], lite[2]);
+    px(img, 7, 3, mid[0], mid[1], mid[2]);
+    px(img, 9, 3, mid[0], mid[1], mid[2]);
+  },
+  [Tile.CorruptThorn]: (img, rng) => {
+    void rng;
+    // 腐化荆棘:紫灰弯曲主干 + 带高光尖端的侧刺,枯槁而狰狞
+    const c = [92, 80, 108];
+    const cd = [64, 56, 82];
+    const ct = [140, 120, 158];
+    const stem = [[8, 15], [8, 14], [7, 13], [7, 12], [8, 11], [8, 10], [7, 9], [7, 8], [8, 7], [8, 6], [9, 5], [9, 4]];
+    for (const [x, y] of stem) px(img, x, y, c[0], c[1], c[2]);
+    const thorns = [
+      [[7, 12], [6, 11], [5, 10]],
+      [[8, 10], [9, 9], [10, 8]],
+      [[7, 8], [6, 7], [5, 6]],
+      [[9, 5], [10, 4], [11, 3]],
+    ];
+    for (const t of thorns) {
+      for (let i = 0; i < t.length; i++) {
+        const [x, y] = t[i];
+        const col = i === t.length - 1 ? ct : cd;
+        px(img, x, y, col[0], col[1], col[2]);
+      }
+    }
+  },
   [Tile.Glowstone]: (img, rng) => {
     // 暖黄底 + 更亮的斑块 + 深色缝隙,类似 MC 萤石
     noiseFill(img, rng, [212, 172, 96], 10);

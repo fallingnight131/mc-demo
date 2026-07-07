@@ -372,6 +372,41 @@ if (logAt) {
 }
 await page.keyboard.press('Digit1');
 
+// --- 地表植被:十字面片,非碰撞可穿行(站进植被格不被弹出) ---
+const veg = await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) - 6;
+  const z = Math.floor(s.z) + 12;
+  const h = g.world.gen.heightAt(x, z);
+  g.world.setBlock(x, h, z, 1); // 脚下草地
+  g.world.setBlock(x, h + 1, z, 46); // 青草(TallGrass)
+  g.world.setBlock(x, h + 2, z, 0); // 头顶留空
+  g.world.setBlock(x, h + 3, z, 0);
+  const placed = g.world.getBlock(x, h + 1, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5); // 站进植被所在格
+  g.player.vel.set(0, 0, 0);
+  return { x, z, h, placed };
+});
+await page.waitForTimeout(450); // 跑几帧物理
+const vegOk = await page.evaluate(
+  ({ x, z, h }) => {
+    const p = window.__game.player.pos;
+    // 非碰撞:站进植被格不被弹出,水平仍在该格、竖直稳立草地顶面
+    return (
+      Math.abs(p.x - (x + 0.5)) < 0.4 &&
+      Math.abs(p.z - (z + 0.5)) < 0.4 &&
+      Math.abs(p.y - (h + 1)) < 0.3
+    );
+  },
+  veg,
+);
+check(
+  '地表植被:生成 + 非碰撞可穿行',
+  veg.placed === 46 && vegOk,
+  `青草已生成 ${veg.placed === 46},站进不被弹出 ${vegOk}`,
+);
+
 // --- 南瓜朝向:四个视角各放一个,脸各自转向玩家(四种变体齐全) ---
 await page.evaluate(() => {
   const g = window.__game;

@@ -114,7 +114,10 @@ export function buildChunkGeometry(
         // 十字面片(火把):两张对角面各双面,取本格光值,不参与面剔除
         if (def.shape === 'cross') {
           const { u0, v0, u1, v1 } = tileUV(tiles[0]);
-          const lv = Math.max(getLight(ox + lx, y, oz + lz) / 15, 0.9); // 火把自体常亮
+          // 光源(火把)自体常亮;植被随实际块光/日光明暗(夜里不发光)
+          const rawLv = getLight(ox + lx, y, oz + lz) / 15;
+          const lv = (def.light ?? 0) > 0 ? Math.max(rawLv, 0.9) : rawLv;
+          const swayVal = def.sway ? 1 : 0; // 顶端顶点随风摆动、底部生根
           const quads: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
             [[0.15, 0.15], [0.85, 0.85]],
             [[0.15, 0.85], [0.85, 0.15]],
@@ -134,7 +137,7 @@ export function buildChunkGeometry(
               for (let i = 0; i < 4; i++) {
                 solid.colors.push(1, 1, 1);
                 solid.lights.push(lv);
-                solid.sways.push(0);
+                solid.sways.push(i >= 2 ? swayVal : 0);
               }
               solid.uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
               solid.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -165,10 +168,7 @@ export function buildChunkGeometry(
             getLight(ox + lx + f.dx, y + f.dy, oz + lz + f.dz) / 15,
             def.glow ?? 0,
           );
-          const sway =
-            id === Block.Leaves || id === Block.JungleLeaves || id === Block.CorruptLeaves
-              ? 1
-              : 0;
+          const sway = def.sway ? 1 : 0;
           for (let i = 0; i < 4; i++) {
             const c = f.corners[i];
             // 顶部顶点统一下沉,侧面随之变矮,避免侧壁高出水面

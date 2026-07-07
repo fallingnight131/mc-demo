@@ -1,7 +1,7 @@
 // 方块与纹理图集定义(纯数据,不依赖 DOM)
 
 export const ATLAS_COLS = 8;
-export const ATLAS_ROWS = 6;
+export const ATLAS_ROWS = 7;
 export const TILE_PX = 16;
 
 // 图集中的纹理格索引
@@ -53,6 +53,10 @@ export const Tile = {
   ChestTop: 44,
   DungeonBrick: 45,
   Cloud: 46,
+  TallGrass: 47, // 青草丛(十字面片)
+  Flower: 48, // 野花(红黄花)
+  JungleFern: 49, // 丛林蕨
+  CorruptThorn: 50, // 腐化荆棘
 } as const;
 
 export const Block = {
@@ -104,6 +108,11 @@ export const Block = {
   Chest: 43, // 宝箱:点按开箱掉战利品(地标专属,不可放置不可挖)
   DungeonBrick: 44, // 地牢砖:泰拉蓝砖,坚硬
   Cloud: 45, // 云块:天空岛材质
+  // 植被(十字面片,非碰撞,依环境生长):森林青草/野花、丛林蕨、腐化荆棘
+  TallGrass: 46,
+  Flower: 47,
+  JungleFern: 48,
+  CorruptThorn: 49,
 } as const;
 
 export interface BlockDef {
@@ -123,6 +132,8 @@ export interface BlockDef {
   gravity?: boolean;
   /** 视觉自发光 0..1(不参与光照传播,岩浆/地狱石用) */
   glow?: number;
+  /** 随风摇曳(树叶顶面、草木植被的顶端顶点) */
+  sway?: boolean;
 }
 
 const T = Tile;
@@ -136,7 +147,7 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '石头', tiles: [T.Stone, T.Stone, T.Stone, T.Stone, T.Stone, T.Stone], solid: true, opaque: true, hardness: 1.2 },
   { name: '沙子', tiles: [T.Sand, T.Sand, T.Sand, T.Sand, T.Sand, T.Sand], solid: true, opaque: true, hardness: 0.35, gravity: true },
   { name: '原木', tiles: [T.LogSide, T.LogSide, T.LogTop, T.LogTop, T.LogSide, T.LogSide], solid: true, opaque: true, hardness: 0.9 },
-  { name: '树叶', tiles: [T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves], solid: true, opaque: true, hardness: 0.2 },
+  { name: '树叶', tiles: [T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves, T.Leaves], solid: true, opaque: true, hardness: 0.2, sway: true },
   { name: '木板', tiles: [T.Plank, T.Plank, T.Plank, T.Plank, T.Plank, T.Plank], solid: true, opaque: true, hardness: 0.8 },
   { name: '圆石', tiles: [T.Cobble, T.Cobble, T.Cobble, T.Cobble, T.Cobble, T.Cobble], solid: true, opaque: true, hardness: 1.3 },
   { name: '基岩', tiles: [T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock, T.Bedrock], solid: true, opaque: true, hardness: Infinity },
@@ -171,11 +182,16 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '丛林草', tiles: [T.JungleGrass, T.JungleGrass, T.JungleGrass, T.Dirt, T.JungleGrass, T.JungleGrass], solid: true, opaque: true, hardness: 0.45 },
   { name: '腐化草', tiles: [T.CorruptGrass, T.CorruptGrass, T.CorruptGrass, T.CorruptGrass, T.CorruptGrass, T.CorruptGrass], solid: true, opaque: true, hardness: 0.45 },
   { name: '黑檀石', tiles: [T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone, T.EbonStone], solid: true, opaque: true, hardness: 1.4 },
-  { name: '丛林树叶', tiles: [T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves], solid: true, opaque: true, hardness: 0.2 },
-  { name: '腐化树叶', tiles: [T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves], solid: true, opaque: true, hardness: 0.2 },
+  { name: '丛林树叶', tiles: [T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves, T.JungleLeaves], solid: true, opaque: true, hardness: 0.2, sway: true },
+  { name: '腐化树叶', tiles: [T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves, T.CorruptLeaves], solid: true, opaque: true, hardness: 0.2, sway: true },
   { name: '宝箱', tiles: [T.ChestSide, T.ChestSide, T.ChestTop, T.ChestTop, T.ChestFront, T.ChestSide], solid: true, opaque: true, hardness: Infinity },
   { name: '地牢砖', tiles: [T.DungeonBrick, T.DungeonBrick, T.DungeonBrick, T.DungeonBrick, T.DungeonBrick, T.DungeonBrick], solid: true, opaque: true, hardness: 5 },
   { name: '云块', tiles: [T.Cloud, T.Cloud, T.Cloud, T.Cloud, T.Cloud, T.Cloud], solid: true, opaque: true, hardness: 0.2 },
+  // 植被:十字面片,非碰撞可穿行、可点按采除,顶端随风摇曳,只能立在实体顶面
+  { name: '青草', tiles: [T.TallGrass, T.TallGrass, T.TallGrass, T.TallGrass, T.TallGrass, T.TallGrass], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
+  { name: '野花', tiles: [T.Flower, T.Flower, T.Flower, T.Flower, T.Flower, T.Flower], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
+  { name: '丛林蕨', tiles: [T.JungleFern, T.JungleFern, T.JungleFern, T.JungleFern, T.JungleFern, T.JungleFern], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
+  { name: '腐化荆棘', tiles: [T.CorruptThorn, T.CorruptThorn, T.CorruptThorn, T.CorruptThorn, T.CorruptThorn, T.CorruptThorn], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
 ];
 
 /** 方块发光等级(0..15) */
@@ -229,6 +245,10 @@ export const PLACEABLE: number[] = [
   Block.Glowstone,
   Block.DungeonBrick,
   Block.Cloud,
+  Block.TallGrass,
+  Block.Flower,
+  Block.JungleFern,
+  Block.CorruptThorn,
 ];
 
 /** 按放置者视角选南瓜朝向:脸转向玩家 */

@@ -180,9 +180,34 @@ export class Generator {
     return Math.round(20 + this.hellN.fbm(x * 0.026 + 53.7, z * 0.026 - 21.3, 2) * 3.2);
   }
 
-  /** 草地上稀有的野生南瓜 */
+  /**
+   * 南瓜聚落:仅约 10% 的 40×40 粗格是南瓜地,格内绕确定性中心成簇
+   * (近心密、边缘疏)——告别此前满地均匀撒点,南瓜只在少数小片区扎堆。
+   */
   hasPumpkin(x: number, z: number): boolean {
-    return hash2(x, z, this.seed ^ 0x7a111) < 0.0016;
+    const PATCH = 40;
+    const cx = Math.floor(x / PATCH);
+    const cz = Math.floor(z / PATCH);
+    if (hash2(cx, cz, this.seed ^ 0x50f1) >= 0.1) return false;
+    const px = cx * PATCH + hash2(cx, cz, this.seed ^ 0x1a2b) * PATCH;
+    const pz = cz * PATCH + hash2(cz, cx, this.seed ^ 0x3c4d) * PATCH;
+    const d = Math.hypot(x - px, z - pz);
+    const R = 7;
+    if (d > R) return false;
+    return hash2(x, z, this.seed ^ 0x7a111) < 0.45 * (1 - d / R);
+  }
+
+  /**
+   * 依环境生长的地表植被(十字面片装饰),返回植被方块 id 或 0(不长)。
+   * 森林:青草常见 + 野花点缀;丛林:蕨类繁茂;腐化之地:稀疏荆棘。
+   */
+  private plantAt(x: number, z: number, biome: 'forest' | 'jungle' | 'corruption'): number {
+    const r = hash2(x, z, this.seed ^ 0x9b7d);
+    if (biome === 'jungle') return r < 0.22 ? Block.JungleFern : 0;
+    if (biome === 'corruption') return r < 0.08 ? Block.CorruptThorn : 0;
+    if (r < 0.02) return Block.Flower;
+    if (r < 0.16) return Block.TallGrass;
+    return 0;
   }
 
   private treeHeight(x: number, z: number): number {
@@ -251,10 +276,15 @@ export class Generator {
         for (let y = h + 1; y <= SEA_LEVEL; y++) {
           data[idx(lx, y, lz)] = Block.Water;
         }
-        // 草地上的野生南瓜(避开树、深谷与地标),朝向按位置确定性随机
-        if (!sandy && !snowy && !chasm && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && this.hasPumpkin(wx, wz) && !this.structures.suppressSurfaceAt(wx, wz)) {
-          const face = [Block.Pumpkin, Block.PumpkinE, Block.PumpkinN, Block.PumpkinW];
-          data[idx(lx, h + 1, lz)] = face[(hash2(wx, wz, this.seed ^ 0x9c1a) * 4) | 0];
+        // 地表装饰(避开沙滩/雪线/深谷/树/地标):南瓜聚落优先,否则依环境长植被
+        if (!sandy && !snowy && !chasm && h > SEA_LEVEL + 1 && !this.hasTree(wx, wz) && !this.structures.suppressSurfaceAt(wx, wz)) {
+          if (this.hasPumpkin(wx, wz)) {
+            const face = [Block.Pumpkin, Block.PumpkinE, Block.PumpkinN, Block.PumpkinW];
+            data[idx(lx, h + 1, lz)] = face[(hash2(wx, wz, this.seed ^ 0x9c1a) * 4) | 0];
+          } else {
+            const plant = this.plantAt(wx, wz, biome);
+            if (plant) data[idx(lx, h + 1, lz)] = plant;
+          }
         }
       }
     }
