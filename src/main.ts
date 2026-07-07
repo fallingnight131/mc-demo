@@ -385,7 +385,7 @@ function heldObjectFor(id: number): THREE.Object3D {
 }
 
 function syncHeld(): void {
-  const want = viewMode === 0 ? -1 : hotbar[selectedSlot];
+  const want = viewMode === 0 || hotbar[selectedSlot] === Block.Air ? -1 : hotbar[selectedSlot];
   if (want === heldShown) return;
   heldShown = want;
   model.setHeld(want < 0 ? null : heldObjectFor(want));
@@ -495,18 +495,26 @@ const hud = new HUD();
 const HOTBAR_SIZE = 10;
 /** 背包可选物品:全部方块 + 工具 */
 const INVENTORY_ITEMS = [...PLACEABLE, ...TOOL_IDS];
+// 空槽位图标:透明画布(手持为空手,不显示任何物品)
+const BLANK_ICON = document.createElement('canvas');
+BLANK_ICON.width = 32;
+BLANK_ICON.height = 32;
 const slotFor = (id: number) =>
-  isTool(id)
-    ? { id, name: TOOL_DEFS[id].name, icon: textures.toolIconFor(id) }
-    : { id, name: BLOCK_DEFS[id].name, icon: textures.iconFor(id) };
+  id === Block.Air
+    ? { id: Block.Air, name: '空手', icon: BLANK_ICON }
+    : isTool(id)
+      ? { id, name: TOOL_DEFS[id].name, icon: textures.toolIconFor(id) }
+      : { id, name: BLOCK_DEFS[id].name, icon: textures.iconFor(id) };
 
-// 快捷栏:每格存方块/工具 id,背包(E)里点选可替换当前槽位,随存档保存
+// 初始快捷栏:空手起步,仅带剑/镐/斧三件工具,其余为空;背包(E)可取方块放入
+const DEFAULT_HOTBAR = [Tool.Sword, Tool.Pickaxe, Tool.Axe, 0, 0, 0, 0, 0, 0, 0];
+// 快捷栏:每格存方块/工具 id(0 = 空槽),背包(E)里点选可替换当前槽位,随存档保存
 let hotbar: number[] =
   Array.isArray(saved?.hotbar) &&
   saved.hotbar.length === HOTBAR_SIZE &&
-  saved.hotbar.every((id) => INVENTORY_ITEMS.includes(id))
+  saved.hotbar.every((id) => id === Block.Air || INVENTORY_ITEMS.includes(id))
     ? [...saved.hotbar]
-    : PLACEABLE.slice(0, HOTBAR_SIZE);
+    : [...DEFAULT_HOTBAR];
 let selectedSlot = Math.min(Math.max(start.slot, 0), HOTBAR_SIZE - 1);
 
 // 拾取计数(随存档恢复,显示在槽位徽章上)
@@ -734,7 +742,7 @@ function breakBlock(hit: RayHit): void {
 function placeAt(hit: RayHit | null): void {
   if (!hit) return;
   const id = hotbar[selectedSlot];
-  if (isTool(id)) return; // 工具不是方块
+  if (isTool(id) || id === Block.Air) return; // 工具与空手都不放置方块
   const tx = hit.x + hit.nx;
   const ty = hit.y + hit.ny;
   const tz = hit.z + hit.nz;
@@ -1143,10 +1151,15 @@ function frame(now: number): void {
           hitTimer: 0,
         };
       }
-      // 镐子对石类方块 3 倍速
-      const pickBoost =
-        hotbar[selectedSlot] === Tool.Pickaxe && materialOf(digHit.id) === 'stone' ? 3 : 1;
-      mining.progress += dt * pickBoost;
+      // 镐子对石类、斧头对木类方块 3 倍速
+      const digTool = hotbar[selectedSlot];
+      const digMat = materialOf(digHit.id);
+      const toolBoost =
+        (digTool === Tool.Pickaxe && digMat === 'stone') ||
+        (digTool === Tool.Axe && digMat === 'wood')
+          ? 3
+          : 1;
+      mining.progress += dt * toolBoost;
       mining.hitTimer -= dt;
       if (mining.hitTimer <= 0) {
         sound.hit(digHit.id);
@@ -1364,6 +1377,13 @@ if (new URLSearchParams(location.search).has('test')) {
     ui: {
       hotbar: () => [...hotbar],
       selected: () => selectedSlot,
+      // 调试:装配任意快捷栏布局 / 取经典方块布局(供 e2e 在清档 reload 后沿用)
+      setHotbar: (ids: number[]) => {
+        for (let i = 0; i < HOTBAR_SIZE; i++) hotbar[i] = ids[i] ?? Block.Air;
+        refreshHotbar();
+        syncHeld();
+      },
+      blockHotbar: () => PLACEABLE.slice(0, HOTBAR_SIZE),
     },
     view: () => viewMode,
     toggleView: () => toggleView(),

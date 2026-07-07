@@ -42,6 +42,22 @@ const look = (mx, my, steps = 20) =>
     [mx, my, steps],
   );
 
+// 里程碑 41:装配经典方块布局(供清档 reload 后的放置类测试沿用)
+const equipBlocks = (ctx = page) =>
+  ctx.evaluate(() => window.__game.ui.setHotbar(window.__game.ui.blockHotbar()));
+
+// 里程碑 41:初始快捷栏空手起步,仅带剑(102)/镐(101)/斧(103),其余为空(0)
+const freshBar = await page.evaluate(() => window.__game.ui.hotbar());
+check(
+  '初始快捷栏:仅剑/镐/斧,其余空手',
+  freshBar[0] === 102 &&
+    freshBar[1] === 101 &&
+    freshBar[2] === 103 &&
+    freshBar.slice(3).every((x) => x === 0),
+  `初始 [${freshBar.join(',')}]`,
+);
+await equipBlocks(); // 之后所有放置类测试沿用经典方块布局
+
 const p0 = await pos();
 console.log('spawn:', p0.map((v) => v.toFixed(2)).join(' / '));
 await page.screenshot({ path: `${OUT}/1-game.png` });
@@ -289,6 +305,70 @@ if (stoneAt) {
   check('镐子挖石加速', pickOk, `徒手 0.7s 未挖动 ${handIntact},镐子 0.7s 挖掉 ${pickBroke}`);
 } else {
   check('镐子挖石加速', false, '未能放置石头');
+}
+await page.keyboard.press('Digit1');
+
+// --- 斧头:砍木类 3 倍速(手持方块基准 0.7s 砍不动原木,斧头 0.5s 砍掉) ---
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) - 5;
+  const z = Math.floor(s.z) + 9;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.65;
+});
+await page.keyboard.press('Digit6'); // 原木(砍树基准木类)
+await page.waitForTimeout(200);
+await page.mouse.down(); // 点按放一块原木
+await page.waitForTimeout(60);
+await page.mouse.up();
+await page.waitForTimeout(250);
+const logAt = await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  for (let dy = 2; dy >= 0; dy--) {
+    for (let dx = -4; dx <= 4; dx++) {
+      for (let dz = -4; dz <= 4; dz++) {
+        const x = Math.floor(p.x) + dx;
+        const y = Math.floor(p.y) + dy;
+        const z = Math.floor(p.z) + dz;
+        if (g.world.getBlock(x, y, z) === 5) return { x, y, z };
+      }
+    }
+  }
+  return null;
+});
+let axeOk = false;
+if (logAt) {
+  await page.mouse.down(); // 手持方块基准 0.7s(原木硬度 0.9,应砍不动)
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const logIntact = (await blockAt(logAt.x, logAt.y, logAt.z)) === 5;
+  await page.keyboard.press('Digit8'); // 背包取斧头到槽位 8
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(250);
+  await page.click('#inv-grid .inv-slot[title="斧头"]');
+  await page.waitForTimeout(250);
+  // page.click 的鼠标移动会转动视角(软锁),重新对准原木
+  await page.evaluate(() => {
+    const g = window.__game;
+    g.player.yaw = 0;
+    g.player.pitch = -0.65;
+  });
+  await page.waitForTimeout(120);
+  await page.mouse.down(); // 斧头 0.5s(3 倍速 → 0.3s 即碎)
+  await page.waitForTimeout(500);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const axeBroke = (await blockAt(logAt.x, logAt.y, logAt.z)) === 0;
+  axeOk = logIntact && axeBroke;
+  check('斧头砍木加速', axeOk, `手持方块 0.7s 未砍动 ${logIntact},斧头 0.5s 砍掉 ${axeBroke}`);
+} else {
+  check('斧头砍木加速', false, '未能放置原木');
 }
 await page.keyboard.press('Digit1');
 
@@ -952,6 +1032,7 @@ check(
   fresh.save === null && fresh.nearSpawn,
   `存档已清 ${fresh.save === null},回到出生点 ${fresh.nearSpawn}`,
 );
+await equipBlocks(); // 清档后快捷栏复位为工具,后续放置类测试重新装配方块
 
 // --- 昼夜循环:拨到黄昏与午夜,亮度骤降、星星出现、雾色变暗 ---
 await page.evaluate(() => window.__game.setTime(0.25)); // 正午基准
@@ -1837,6 +1918,7 @@ await mob.evaluate(() => localStorage.clear());
 await mob.reload({ waitUntil: 'load' });
 await mob.waitForSelector('canvas.game', { timeout: 15000 });
 await mob.waitForTimeout(2500);
+await equipBlocks(mob); // 触屏页同样从空手起步,装回方块布局供手势放置测试
 const touchUI = (await mob.$('#joy-base')) !== null;
 await mob.screenshot({ path: `${OUT}/12-touch-ui.png` });
 const touchLayoutAt = async (width) => {
