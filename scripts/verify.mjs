@@ -1705,6 +1705,49 @@ if (hellInfo) {
 }
 await page.waitForTimeout(600);
 
+// --- 摔落伤害:硬着陆扣血,落水免疫(泰拉式深度风险) ---
+await page.evaluate(() => {
+  const g = window.__game;
+  g.setHp(10);
+  const x = Math.floor(g.spawn.x);
+  const z = Math.floor(g.spawn.z);
+  g.world.warmup(Math.floor(x / 16), Math.floor(z / 16));
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 14, z + 0.5); // 13 格自由落体,约 4 伤
+  g.player.vel.set(0, 0, 0);
+});
+await page.waitForTimeout(1500);
+const fallHp = await page.evaluate(() => window.__game.hp());
+const waterSpot = await page.evaluate(() => {
+  const g = window.__game;
+  g.setHp(10);
+  // 向东找一片海,从更高处跳水(入水瞬间限速,着底不算摔)
+  for (let x = 430; x < 600; x += 6) {
+    if (g.world.gen.heightAt(x, 0) < 122) {
+      g.world.warmup(Math.floor(x / 16), 0);
+      g.player.pos.set(x + 0.5, 160, 0.5);
+      g.player.vel.set(0, 0, 0);
+      return x;
+    }
+  }
+  return null;
+});
+await page.waitForTimeout(2200);
+const waterHp = await page.evaluate(() => window.__game.hp());
+check(
+  '摔落伤害与落水免疫',
+  fallHp < 10 && fallHp >= 4 && waterSpot !== null && waterHp === 10,
+  `13 格硬着陆 HP 10→${fallHp},32 格跳水(x=${waterSpot})HP=${waterHp}`,
+);
+await page.evaluate(() => {
+  const g = window.__game;
+  g.setHp(10);
+  g.world.warmup(Math.floor(g.spawn.x / 16), Math.floor(g.spawn.z / 16));
+  g.player.pos.set(g.spawn.x, g.spawn.y + 1, g.spawn.z);
+  g.player.vel.set(0, 0, 0);
+});
+await page.waitForTimeout(400);
+
 // --- 环顾远景 ---
 await look(0, -45, 30);
 await look(10, 0, 22);

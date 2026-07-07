@@ -56,6 +56,7 @@ class GeoArrays {
   colors: number[] = [];
   uvs: number[] = [];
   lights: number[] = []; // 每顶点块光(0..1),着色器中 max(昼夜, 块光)
+  sways: number[] = []; // 随风摇曳系数(树叶 1,其余 0)
   indices: number[] = [];
 
   toGeometry(): THREE.BufferGeometry | null {
@@ -65,6 +66,7 @@ class GeoArrays {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
     g.setAttribute('aLight', new THREE.Float32BufferAttribute(this.lights, 1));
+    g.setAttribute('aSway', new THREE.Float32BufferAttribute(this.sways, 1));
     g.setIndex(this.indices);
     g.computeBoundingSphere();
     return g;
@@ -132,6 +134,7 @@ export function buildChunkGeometry(
               for (let i = 0; i < 4; i++) {
                 solid.colors.push(1, 1, 1);
                 solid.lights.push(lv);
+                solid.sways.push(0);
               }
               solid.uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
               solid.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -162,6 +165,10 @@ export function buildChunkGeometry(
             getLight(ox + lx + f.dx, y + f.dy, oz + lz + f.dz) / 15,
             def.glow ?? 0,
           );
+          const sway =
+            id === Block.Leaves || id === Block.JungleLeaves || id === Block.CorruptLeaves
+              ? 1
+              : 0;
           for (let i = 0; i < 4; i++) {
             const c = f.corners[i];
             // 顶部顶点统一下沉,侧面随之变矮,避免侧壁高出水面
@@ -170,6 +177,7 @@ export function buildChunkGeometry(
             const b = f.brightness;
             target.colors.push(b, b, b);
             target.lights.push(faceLight * f.brightness);
+            target.sways.push(sway);
           }
           target.uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
           target.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);

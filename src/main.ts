@@ -5,6 +5,7 @@ import { baseBlock, Block, BLOCK_DEFS, isWater, PLACEABLE, pumpkinVariant } from
 import {
   CHUNK_SIZE,
   EYE_HEIGHT,
+  LAVA_LEVEL,
   LAYER_CAVERN_TOP,
   LAYER_HELL_TOP,
   LAYER_SKY_BOTTOM,
@@ -85,11 +86,21 @@ const solidMat = new THREE.MeshBasicMaterial({
 // 块光照:顶点属性 aLight(0..1),最终亮度 = max(昼夜, 块光)。
 // 昼夜不再乘在材质 color 上,而是走 uniform,火把夜里才能保持亮。
 const dayUniform = { value: 1 };
+const timeUniform = { value: 0 }; // 树叶随风摇曳的时间
 solidMat.onBeforeCompile = (shader) => {
   shader.uniforms.uDay = dayUniform;
+  shader.uniforms.uTime = timeUniform;
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nattribute float aLight;\nvarying float vLight;')
-    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLight = aLight;');
+    .replace(
+      '#include <common>',
+      '#include <common>\nattribute float aLight;\nattribute float aSway;\nuniform float uTime;\nvarying float vLight;',
+    )
+    .replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\nvLight = aLight;\n' +
+        'transformed.x += aSway * 0.05 * sin(uTime * 1.6 + position.x * 0.9 + position.y * 0.55);\n' +
+        'transformed.z += aSway * 0.05 * sin(uTime * 1.25 + position.z * 0.85 + position.y * 0.4);',
+    );
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>\nuniform float uDay;\nvarying float vLight;')
     .replace(
@@ -887,10 +898,11 @@ function frame(now: number): void {
         input.isDown('ShiftLeft') || input.isDown('ShiftRight') || (touch?.sprintHeld ?? false),
     });
 
-    // 兜底:跌出世界则传回出生点
+    // 兜底:跌出世界则传回出生点(清零落速记录,免得救援落地被记摔伤)
     if (player.pos.y < -20) {
       player.pos.set(spawn.x, spawn.y + 2, spawn.z);
       player.vel.set(0, 0, 0);
+      minFallVy = 0;
     }
   } else {
     input.consumeLook();
@@ -1125,6 +1137,19 @@ function frame(now: number): void {
       )) {
         particles.burst(sx, sy, sz, Block.Water, 3);
       }
+      // 地狱:岩浆面升起的余烬火星
+      if (player.pos.y < LAYER_HELL_TOP + 3) {
+        for (let i = 0; i < 5; i++) {
+          const ex = Math.floor(player.pos.x + (Math.random() - 0.5) * 32);
+          const ez = Math.floor(player.pos.z + (Math.random() - 0.5) * 32);
+          if (
+            world.getBlock(ex, LAVA_LEVEL, ez) === Block.Lava &&
+            world.getBlock(ex, LAVA_LEVEL + 1, ez) === Block.Air
+          ) {
+            particles.ember(ex, LAVA_LEVEL + 1, ez);
+          }
+        }
+      }
     }
 
     // 脚步声
@@ -1137,12 +1162,15 @@ function frame(now: number): void {
         sound.step(feet);
       }
     }
-    // 落地闷响
+    // 落地闷响 + 摔落伤害(约 7 格起步,水中免疫 —— 水里落速被限死)
     if (!player.onGround) {
       minFallVy = Math.min(minFallVy, player.vel.y);
       stepAcc = 1.6;
     } else {
       if (wasAirborne && minFallVy < -9 && feet !== Block.Air) sound.step(feet, 1.8);
+      if (wasAirborne && minFallVy < -19 && !player.isInWater()) {
+        damagePlayer(Math.min(10, Math.ceil((-minFallVy - 19) / 2.2)));
+      }
       minFallVy = 0;
     }
     wasAirborne = !player.onGround;
@@ -1189,9 +1217,10 @@ function frame(now: number): void {
   // 天空跟随与云层漂移
   sky.update(dt, camera.position, dn);
 
-  // 水面缓慢流动 + 轻微晃动
+  // 水面缓慢流动 + 轻微晃动;树叶摇曳时钟
   waterTex.offset.x = Math.sin(now * 0.0005) * 0.06;
   waterTex.offset.y = (now * 0.00006) % 1;
+  timeUniform.value = (now * 0.001) % 3600;
 
   // FPS / 调试信息
   fpsFrames++;

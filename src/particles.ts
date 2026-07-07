@@ -1,6 +1,6 @@
 // 方块破坏粒子:单次 draw call 的点精灵池,采样方块纹理小块
 import * as THREE from 'three';
-import { ATLAS_COLS, ATLAS_ROWS, BLOCK_DEFS, TILE_PX } from './blocks';
+import { ATLAS_COLS, ATLAS_ROWS, Block, BLOCK_DEFS, TILE_PX } from './blocks';
 
 const MAX = 512;
 const GRAVITY = 22;
@@ -19,6 +19,7 @@ export class Particles {
   private readonly sizes = new Float32Array(MAX);
   private readonly alphas = new Float32Array(MAX);
   private readonly vels = new Float32Array(MAX * 3);
+  private readonly gravs = new Float32Array(MAX); // 重力系数(碎屑 1,余烬为负=上升)
   private readonly life = new Float32Array(MAX);
   private readonly ttl = new Float32Array(MAX);
   private count = 0;
@@ -105,9 +106,35 @@ export class Particles {
       this.uvs[n * 2 + 1] = 1 - (row + 1) * dv + Math.random() * (dv - PATCH_V);
       this.sizes[n] = 0.09 + Math.random() * 0.08;
       this.alphas[n] = 1;
+      this.gravs[n] = 1;
       this.life[n] = 0;
       this.ttl[n] = 0.45 + Math.random() * 0.35;
     }
+  }
+
+  /** 岩浆余烬:从岩浆面缓缓升起的橙色火星(地狱氛围) */
+  ember(bx: number, by: number, bz: number): void {
+    const tiles = BLOCK_DEFS[Block.Lava].tiles; // 岩浆纹理(橙红)
+    if (!tiles || this.count >= MAX - 4) return;
+    const n = this.count++;
+    this.positions[n * 3] = bx + Math.random();
+    this.positions[n * 3 + 1] = by + Math.random() * 0.3;
+    this.positions[n * 3 + 2] = bz + Math.random();
+    this.vels[n * 3] = (Math.random() - 0.5) * 0.7;
+    this.vels[n * 3 + 1] = 1.1 + Math.random() * 1.3;
+    this.vels[n * 3 + 2] = (Math.random() - 0.5) * 0.7;
+    this.gravs[n] = -0.03; // 热气流:缓缓加速上升
+    const tile = tiles[0];
+    const col = tile % ATLAS_COLS;
+    const row = Math.floor(tile / ATLAS_COLS);
+    const du = 1 / ATLAS_COLS;
+    const dv = 1 / ATLAS_ROWS;
+    this.uvs[n * 2] = col * du + Math.random() * (du - PATCH_U);
+    this.uvs[n * 2 + 1] = 1 - (row + 1) * dv + Math.random() * (dv - PATCH_V);
+    this.sizes[n] = 0.05 + Math.random() * 0.05;
+    this.alphas[n] = 1;
+    this.life[n] = 0;
+    this.ttl[n] = 1.3 + Math.random() * 0.9;
   }
 
   update(dt: number): void {
@@ -123,7 +150,7 @@ export class Particles {
         continue;
       }
       const i3 = i * 3;
-      this.vels[i3 + 1] -= GRAVITY * dt;
+      this.vels[i3 + 1] -= GRAVITY * this.gravs[i] * dt;
       let nx = this.positions[i3] + this.vels[i3] * dt;
       let ny = this.positions[i3 + 1] + this.vels[i3 + 1] * dt;
       let nz = this.positions[i3 + 2] + this.vels[i3 + 2] * dt;
@@ -158,6 +185,7 @@ export class Particles {
       this.uvs.copyWithin(i * 2, last * 2, last * 2 + 2);
       this.sizes[i] = this.sizes[last];
       this.alphas[i] = this.alphas[last];
+      this.gravs[i] = this.gravs[last];
       this.life[i] = this.life[last];
       this.ttl[i] = this.ttl[last];
     }
