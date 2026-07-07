@@ -583,6 +583,66 @@
       #reset-save:hover {
         color: #cfe0f5;
       }
+      /* 设置 / 教程 页签 */
+      .menu-tabs {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 14px;
+      }
+      .menu-tabs button {
+        font: inherit;
+        font-size: 14px;
+        color: #d8e2f0;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 8px;
+        padding: 6px 18px;
+        cursor: pointer;
+      }
+      .menu-tabs button.active {
+        background: rgba(159, 208, 127, 0.25);
+        border-color: #9fd07f;
+        color: #cfe8b8;
+      }
+      .pane {
+        display: none;
+      }
+      .pane.open {
+        display: block;
+      }
+      #settings-pane {
+        text-align: left;
+        display: none;
+        margin: 0 auto 18px;
+        max-width: 340px;
+        font-size: 14px;
+        color: #d8e2f0;
+      }
+      #settings-pane.open {
+        display: block;
+      }
+      #settings-pane .opt {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 2px;
+        cursor: pointer;
+      }
+      #settings-pane .opt input[type='checkbox'] {
+        width: 17px;
+        height: 17px;
+        accent-color: #9fd07f;
+      }
+      #settings-pane .opt input[type='range'] {
+        flex: 1;
+        accent-color: #9fd07f;
+      }
+      #settings-pane .opt-note {
+        font-size: 12px;
+        color: #8fa4c0;
+        margin: -4px 0 4px 27px;
+      }
     </style>
   </head>
   <body>
@@ -590,6 +650,23 @@
       <div class="panel">
         <h1 id="overlay-title">MC Demo</h1>
         <div class="sub">Three.js 体素沙盒演示</div>
+        <div class="menu-tabs">
+          <button id="tab-settings" type="button">⚙ 设置</button>
+          <button id="tab-tutorial" type="button" class="active">📖 教程</button>
+        </div>
+        <div id="settings-pane" class="pane">
+          <label class="opt"
+            ><input type="checkbox" id="opt-creative" /> 创造模式(飞行观察世界,免疫伤害)</label
+          >
+          <div class="opt-note">空格上升 · Shift/冲刺键下降</div>
+          <label class="opt"><input type="checkbox" id="opt-sound" /> 音效</label>
+          <label class="opt"
+            >灵敏度
+            <input type="range" id="opt-sens" min="0.5" max="2" step="0.1" />
+            <span id="opt-sens-val">1.0</span></label
+          >
+        </div>
+        <div id="tutorial-pane" class="pane open">
         <ul id="help-desktop">
           <li><kbd>W A S D</kbd>移动</li>
           <li><kbd>鼠标</kbd>视角</li>
@@ -616,6 +693,7 @@
           <li><kbd>👁</kbd>切换第一/第三人称视角</li>
           <li><kbd>背包</kbd>右上按钮换方块,点物品栏切换</li>
         </ul>
+        </div>
         <div class="start">点击开始游戏</div>
         <div id="overlay-hint"></div>
         <div id="reset-save">清除存档,重开新世界</div>

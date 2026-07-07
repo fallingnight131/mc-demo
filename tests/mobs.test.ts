@@ -87,7 +87,7 @@ describe('mob 物理', () => {
     for (let y = wh - 2; y <= wh; y++) world.setBlock(wx, y, wz, Block.Stone);
   });
 
-  it('鸡扑翼缓降:下落速度被限制且安全落地', () => {
+  it('缓降体质:下落速度被限制且安全落地(留给未来的飞行生物)', () => {
     const b = makeBody(x0 + 0.5, h0 + 8, z0 + 0.5);
     b.half = 0.2;
     b.height = 0.62;

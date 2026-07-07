@@ -969,8 +969,8 @@ export interface MobSkin {
   face: THREE.CanvasTexture;
 }
 
-/** 猪/羊/鸡的程序化皮肤(盒子模型用) */
-export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: MobSkin; zombie: MobSkin } {
+/** 僵尸的程序化皮肤(盒子模型用) */
+export function buildMobTextures(): { zombie: MobSkin } {
   const make = (paint: Painter, seed: number): THREE.CanvasTexture => {
     const canvas = document.createElement('canvas');
     canvas.width = TS;
@@ -986,89 +986,6 @@ export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: Mob
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   };
-  const eyes = (img: ImageData, y = 5) => {
-    for (const ox of [2, 11]) {
-      px(img, ox, y, 246, 246, 246);
-      px(img, ox, y + 1, 246, 246, 246);
-      px(img, ox + 1, y, 24, 18, 22);
-      px(img, ox + 1, y + 1, 24, 18, 22);
-    }
-  };
-
-  // 猪:粉皮 + 猪鼻
-  const pigSkin: Painter = (img, rng) => {
-    noiseFill(img, rng, [236, 158, 148], 8);
-    for (let i = 0; i < 6; i++) {
-      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 216, 134, 126);
-    }
-  };
-  const pigBody = make(pigSkin, 555001);
-  const pigFace = make((img, rng) => {
-    pigSkin(img, rng);
-    eyes(img);
-    for (let y = 8; y <= 11; y++) {
-      for (let x = 5; x <= 10; x++) {
-        px(img, x, y, 224, 120, 132);
-      }
-    }
-    px(img, 6, 9, 134, 62, 72);
-    px(img, 6, 10, 134, 62, 72);
-    px(img, 9, 9, 134, 62, 72);
-    px(img, 9, 10, 134, 62, 72);
-  }, 555002);
-
-  // 羊:奶白卷毛 + 浅褐脸
-  const wool: Painter = (img, rng) => {
-    noiseFill(img, rng, [233, 231, 224], 6);
-    for (let i = 0; i < 14; i++) {
-      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 210, 207, 197);
-    }
-  };
-  const sheepHide: Painter = (img, rng) => {
-    noiseFill(img, rng, [224, 200, 178], 8);
-  };
-  const sheepBody = make(wool, 556001);
-  const sheepHead = make(sheepHide, 556002);
-  const sheepFace = make((img, rng) => {
-    sheepHide(img, rng);
-    // 额头一撮羊毛
-    for (let y = 0; y <= 2; y++) {
-      for (let x = 3; x <= 12; x++) {
-        const v = (rng() * 2 - 1) * 6;
-        px(img, x, y, clamp255(233 + v), clamp255(231 + v), clamp255(224 + v));
-      }
-    }
-    eyes(img, 6);
-    // 粉鼻头
-    px(img, 7, 11, 214, 150, 148);
-    px(img, 8, 11, 214, 150, 148);
-    px(img, 7, 12, 190, 124, 122);
-    px(img, 8, 12, 190, 124, 122);
-  }, 556003);
-
-  // 鸡:白羽 + 黄喙红肉髯
-  const feather: Painter = (img, rng) => {
-    noiseFill(img, rng, [245, 243, 238], 5);
-    for (let i = 0; i < 8; i++) {
-      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 224, 221, 214);
-    }
-  };
-  const chickenBody = make(feather, 557001);
-  const chickenFace = make((img, rng) => {
-    feather(img, rng);
-    eyes(img, 4);
-    // 黄喙
-    for (let y = 8; y <= 10; y++) {
-      for (let x = 6; x <= 9; x++) {
-        px(img, x, y, 238, 182, 38);
-      }
-    }
-    // 红肉髯
-    px(img, 7, 11, 196, 44, 38);
-    px(img, 8, 11, 196, 44, 38);
-    px(img, 7, 12, 172, 34, 30);
-    px(img, 8, 12, 172, 34, 30);
-  }, 557002);
 
   // 僵尸:腐绿皮肤 + 深青破衣 + 黑眼直视
   const zombieSkin: Painter = (img, rng) => {
@@ -1093,9 +1010,6 @@ export function buildMobTextures(): { pig: MobSkin; sheep: MobSkin; chicken: Mob
     for (let x = 6; x <= 9; x++) px(img, x, 12, 44, 62, 40);
   }, 558003);
   return {
-    pig: { body: pigBody, head: pigBody, face: pigFace },
-    sheep: { body: sheepBody, head: sheepHead, face: sheepFace },
-    chicken: { body: chickenBody, head: chickenBody, face: chickenFace },
     zombie: { body: zombieBody, head: zombieHead, face: zombieFace },
   };
 }

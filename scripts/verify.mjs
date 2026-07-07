@@ -454,28 +454,29 @@ const brickPlaced = await page.evaluate(() => {
 check('放置新方块(砖块)', brickPlaced, `世界中出现砖块 ${brickPlaced}`);
 await page.keyboard.press('Digit1'); // 复位选中槽位
 
-// --- 生物:生成小猪 → 逐拳追击,三拳白烟击杀 ---
+// --- 生物:夜里生成僵尸 → 逐拳追击,五拳白烟击杀 ---
 await page.evaluate(() => {
   const g = window.__game;
   g.mobs.setAutoSpawn(false); // 测试期间不自然生成
   g.mobs.clear();
+  g.setTime(0.75); // 午夜:僵尸不会燃烧
+  g.setHp(10);
   const s = g.spawn;
   const x = Math.floor(s.x) + 3;
   const z = Math.floor(s.z);
   const h = g.world.gen.heightAt(x, z);
-  g.mobs.spawnAt(x + 0.5, h + 1.01, z + 0.5);
-  // 玩家站到猪西侧 2.5 格,面向它
+  g.mobs.spawnAt(x + 0.5, h + 1.01, z + 0.5, 'zombie');
   g.player.pos.set(x - 2, h + 1.01, z + 0.5);
   g.player.vel.set(0, 0, 0);
   g.player.yaw = Math.atan2(-2.5, 0);
-  g.player.pitch = -0.4;
+  g.player.pitch = -0.2;
 });
 await page.waitForTimeout(400);
-const pigSpawned = await page.evaluate(() => window.__game.mobs.count());
-await page.screenshot({ path: `${OUT}/11-pig.png` });
+const zomSpawned = await page.evaluate(() => window.__game.mobs.count());
+await page.screenshot({ path: `${OUT}/11-zombie.png` });
 let punches = 0;
-while (punches < 8 && (await page.evaluate(() => window.__game.mobs.count())) > 0) {
-  // 猪会跑,每拳前传送到它旁边并瞄准
+while (punches < 9 && (await page.evaluate(() => window.__game.mobs.count())) > 0) {
+  // 每拳前传送到僵尸旁并瞄准(它会追着玩家走)
   await page.evaluate(() => {
     const g = window.__game;
     const list = g.mobs.list();
@@ -486,7 +487,7 @@ while (punches < 8 && (await page.evaluate(() => window.__game.mobs.count())) > 
     const dx = m.x - g.player.pos.x;
     const dz = m.z - g.player.pos.z;
     g.player.yaw = Math.atan2(-dx, -dz);
-    g.player.pitch = -0.42;
+    g.player.pitch = -0.2;
   });
   await page.waitForTimeout(150);
   await page.mouse.down();
@@ -494,11 +495,11 @@ while (punches < 8 && (await page.evaluate(() => window.__game.mobs.count())) > 
   punches++;
   await page.waitForTimeout(400);
 }
-const pigsLeft = await page.evaluate(() => window.__game.mobs.count());
+const zomLeft = await page.evaluate(() => window.__game.mobs.count());
 check(
-  '生物:小猪击杀',
-  pigSpawned === 1 && pigsLeft === 0 && punches >= 3,
-  `生成 ${pigSpawned} 只,${punches} 拳后剩余 ${pigsLeft}(3 拳应击杀)`,
+  '生物:僵尸击杀',
+  zomSpawned === 1 && zomLeft === 0 && punches >= 5,
+  `生成 ${zomSpawned} 只,${punches} 拳后剩余 ${zomLeft}(hp5 徒手 5 拳应击杀)`,
 );
 
 // --- 剑:双倍伤害,一剑 hp 3→1,两剑毙命 ---
@@ -509,11 +510,12 @@ await page.click('#inv-grid .inv-slot[title="剑"]');
 await page.waitForTimeout(250);
 await page.evaluate(() => {
   const g = window.__game;
+  g.setHp(10);
   const s = g.spawn;
   const x = Math.floor(s.x) + 3;
   const z = Math.floor(s.z) + 1;
   const h = g.world.gen.heightAt(x, z);
-  g.mobs.spawnAt(x + 0.5, h + 1.01, z + 0.5);
+  g.mobs.spawnAt(x + 0.5, h + 1.01, z + 0.5, 'zombie');
 });
 let swordHits = 0;
 let hpAfterOne = -1;
@@ -526,7 +528,7 @@ while (swordHits < 5 && (await page.evaluate(() => window.__game.mobs.count())) 
     g.player.pos.set(m.x - 2, m.y, m.z);
     g.player.vel.set(0, 0, 0);
     g.player.yaw = Math.atan2(-(m.x - (m.x - 2)), 0);
-    g.player.pitch = -0.42;
+    g.player.pitch = -0.2;
   });
   await page.waitForTimeout(150);
   await page.mouse.down();
@@ -540,9 +542,10 @@ while (swordHits < 5 && (await page.evaluate(() => window.__game.mobs.count())) 
 }
 check(
   '剑:双倍伤害',
-  hpAfterOne <= 1 && swordHits <= 3,
-  `一剑后 hp=${hpAfterOne}(应 ≤1),${swordHits} 剑毙命(徒手需 3+)`,
+  hpAfterOne === 3 && swordHits <= 3,
+  `一剑后 hp=${hpAfterOne}(应 5→3),${swordHits} 剑毙命(徒手需 5 拳)`,
 );
+await page.evaluate(() => window.__game.setTime(0.25)); // 回到白天
 
 // --- 剑不能挖掘(与 MC 一致):手持剑对草方块长按 1s,方块仍在 ---
 await page.evaluate(() => {
@@ -573,29 +576,20 @@ const swordNoDig = await page.evaluate(
 check('剑不能挖掘', swordNoDig, `长按 1s 后脚下方块仍在 ${swordNoDig}(徒手 0.45s 即可挖掉)`);
 await page.keyboard.press('Digit1');
 
-// --- 羊与鸡:生成到面前合影 ---
+// --- MC 被动生物已移除:白昼自然生成不出任何生物(僵尸只属于黑夜) ---
 await page.evaluate(() => {
   const g = window.__game;
-  const s = g.spawn;
-  const x = Math.floor(s.x);
-  const z = Math.floor(s.z);
-  g.mobs.spawnAt(x + 1.5, g.world.gen.heightAt(x + 1, z + 3) + 1.01, z + 3.5, 'sheep');
-  g.mobs.spawnAt(x + 3.5, g.world.gen.heightAt(x + 3, z + 3) + 1.01, z + 3.5, 'chicken');
-  g.player.pos.set(x + 2.5, g.world.gen.heightAt(x + 2, z) + 1.01, z + 0.5);
-  g.player.vel.set(0, 0, 0);
-  g.player.yaw = Math.PI; // 面向 +z
-  g.player.pitch = -0.25;
+  g.mobs.clear();
+  g.setTime(0.3); // 白天
+  g.mobs.setAutoSpawn(true);
 });
-await page.waitForTimeout(400);
-const flock = await page.evaluate(() =>
-  window.__game.mobs
-    .list()
-    .map((m) => m.kind)
-    .sort()
-    .join(','),
-);
-await page.screenshot({ path: `${OUT}/11b-flock.png` });
-check('生物:羊与鸡生成', flock === 'chicken,sheep', `场上生物: ${flock}`);
+await page.waitForTimeout(4200); // 生成节拍 1.6s,给出 2 次尝试机会
+const dayMobs = await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.setAutoSpawn(false);
+  return g.mobs.count();
+});
+check('白昼无被动生物(MC 生物已移除)', dayMobs === 0, `白昼自然生成 ${dayMobs} 只(应 0,夜晚才有僵尸)`);
 
 // --- TNT:放置 → 点燃 → 爆出弹坑 ---
 // 传送到出生点旁的平整草地,面向 -z 俯视,保证放置射线命中地面顶面
@@ -702,15 +696,17 @@ if (tntPos) {
 await page.keyboard.press('Digit4'); // 切回圆石,避免影响后续
 await page.waitForTimeout(120);
 
-// --- TNT 波及生物:贴着 TNT 的猪被炸死或炸伤 ---
+// --- TNT 波及生物:贴着 TNT 的僵尸被炸死或炸伤 ---
 await page.evaluate(() => {
   const g = window.__game;
   g.mobs.clear();
+  g.setTime(0.75); // 夜间:免得僵尸白天自燃干扰计伤
+  g.setHp(10);
   const s = g.spawn;
   const x = Math.floor(s.x) - 6;
   const z = Math.floor(s.z) - 4;
   const h = g.world.gen.heightAt(x, z);
-  g.mobs.spawnAt(x + 1.5, g.world.gen.heightAt(x + 1, z) + 1.01, z + 0.5, 'pig');
+  g.mobs.spawnAt(x + 1.5, g.world.gen.heightAt(x + 1, z) + 1.01, z + 0.5, 'zombie');
   g.world.setBlock(x, h + 1, z, 17); // 放 TNT 方块
   // 玩家站到 4 格外,精确瞄准 TNT 中心
   const py = g.world.gen.heightAt(x, z + 4) + 1.01;
@@ -733,10 +729,15 @@ const mobBlast = await page.evaluate(() => {
 });
 check(
   'TNT 波及生物',
-  mobBlast.count === 0 || mobBlast.hp < 3,
-  mobBlast.count === 0 ? '猪被炸死' : `猪受伤,hp=${mobBlast.hp}`,
+  mobBlast.count === 0 || mobBlast.hp < 5,
+  mobBlast.count === 0 ? '僵尸被炸死' : `僵尸受伤,hp=${mobBlast.hp}`,
 );
-await page.evaluate(() => window.__game.mobs.setAutoSpawn(true));
+await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.clear();
+  g.setTime(0.25);
+  g.mobs.setAutoSpawn(true);
+});
 
 // --- 水流:挖开湖岸,水应当涌入缺口 ---
 const shore = await page.evaluate(() => {
@@ -1765,6 +1766,57 @@ await page.evaluate(() => {
   g.player.vel.set(0, 0, 0);
 });
 await page.waitForTimeout(400);
+
+// --- 创造模式:设置开启后飞行观察,免疫伤害 ---
+const flyY0 = await page.evaluate(() => {
+  const g = window.__game;
+  g.setCreative(true);
+  g.setHp(10);
+  return g.player.pos.y;
+});
+await page.keyboard.down('Space');
+await page.waitForTimeout(900);
+await page.keyboard.up('Space');
+const flyState = await page.evaluate(() => ({
+  y: window.__game.player.pos.y,
+  checked: document.getElementById('opt-creative').checked,
+}));
+// 免疫:落回地面,夜里僵尸贴脸打 2.5s,血量不动
+await page.evaluate(() => {
+  const g = window.__game;
+  g.setTime(0.75);
+  g.mobs.clear();
+  const s = g.spawn;
+  const x = Math.floor(s.x);
+  const z = Math.floor(s.z);
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.mobs.spawnAt(x + 1.5, h + 1.01, z + 0.5);
+});
+await page.waitForTimeout(2500);
+const creativeHp = await page.evaluate(() => window.__game.hp());
+const backToGround = await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.clear();
+  g.setTime(0.25);
+  g.setCreative(false);
+  return document.getElementById('opt-creative').checked;
+});
+await page.waitForTimeout(1200); // 关掉创造后应落回地面
+const landedY = await page.evaluate(() => {
+  const g = window.__game;
+  g.setHp(10);
+  return g.player.pos.y;
+});
+check(
+  '创造模式:飞行与免伤',
+  flyY1Up() && flyState.checked === true && creativeHp === 10 && backToGround === false && landedY < flyState.y - 2,
+  `按住空格 0.9s 升 ${(flyState.y - flyY0).toFixed(1)} 格,复选框同步 ${flyState.checked},僵尸贴脸 2.5s HP=${creativeHp},关闭后落回(y ${flyState.y.toFixed(1)}→${landedY.toFixed(1)})`,
+);
+function flyY1Up() {
+  return flyState.y - flyY0 > 3;
+}
 
 // --- 环顾远景 ---
 await look(0, -45, 30);

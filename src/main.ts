@@ -130,6 +130,7 @@ interface SaveData {
   time?: number;
   hotbar?: number[];
   hp?: number;
+  creative?: boolean;
 }
 let saved: SaveData | null = null;
 try {
@@ -161,6 +162,19 @@ player.pos.set(start.x, start.y, start.z);
 player.yaw = start.yaw;
 player.pitch = start.pitch;
 
+// 创造模式(设置里开):飞行观察世界 + 免疫伤害,随存档保存
+let creativeMode = saved?.creative === true;
+player.creative = creativeMode;
+
+// 灵敏度倍率(设置面板可调,0.5~2,跨会话记忆)
+let sensScale = 1;
+try {
+  const v = parseFloat(localStorage.getItem('mc-demo-sens') ?? '1');
+  if (v >= 0.5 && v <= 2) sensScale = v;
+} catch {
+  // 忽略
+}
+
 // 昼夜时间(0..1,0=日出/0.25=正午),随存档保存
 let timeOfDay = typeof saved?.time === 'number' ? ((saved.time % 1) + 1) % 1 : 0.22;
 let worldBrightness = 1;
@@ -184,6 +198,7 @@ function saveGame(): void {
       time: timeOfDay,
       hotbar: [...hotbar],
       hp,
+      creative: creativeMode,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     world.editsDirty = false;
@@ -289,6 +304,7 @@ function layerNameOf(y: number): string {
 }
 
 function damagePlayer(dmg: number, dirX = 0, dirZ = 0): void {
+  if (creativeMode) return; // 创造模式免疫一切伤害
   hp -= dmg;
   if (dirX !== 0 || dirZ !== 0) {
     player.vel.x += dirX * 7;
@@ -537,6 +553,66 @@ function engage(): void {
 
 const overlayEl = document.getElementById('overlay')!;
 overlayEl.addEventListener('click', () => engage());
+
+// --- 设置面板与教程页签(点击不落入"开始游戏") ---
+function setCreative(v: boolean): void {
+  creativeMode = v;
+  player.creative = v;
+  (document.getElementById('opt-creative') as HTMLInputElement).checked = v;
+  if (v) hud.toast('创造模式:飞行观察(空格升 / Shift 降)');
+  else hud.toast('生存模式');
+  saveGame();
+}
+{
+  const tabSettings = document.getElementById('tab-settings')!;
+  const tabTutorial = document.getElementById('tab-tutorial')!;
+  const paneSettings = document.getElementById('settings-pane')!;
+  const paneTutorial = document.getElementById('tutorial-pane')!;
+  const showPane = (which: 'settings' | 'tutorial') => {
+    paneSettings.classList.toggle('open', which === 'settings');
+    paneTutorial.classList.toggle('open', which === 'tutorial');
+    tabSettings.classList.toggle('active', which === 'settings');
+    tabTutorial.classList.toggle('active', which === 'tutorial');
+  };
+  tabSettings.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showPane('settings');
+  });
+  tabTutorial.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showPane('tutorial');
+  });
+  paneSettings.addEventListener('click', (e) => e.stopPropagation());
+
+  const optCreative = document.getElementById('opt-creative') as HTMLInputElement;
+  optCreative.checked = creativeMode;
+  optCreative.addEventListener('change', () => setCreative(optCreative.checked));
+
+  const optSound = document.getElementById('opt-sound') as HTMLInputElement;
+  optSound.checked = !sound.muted;
+  optSound.addEventListener('change', () => {
+    sound.setMuted(!optSound.checked);
+    try {
+      localStorage.setItem('mc-demo-muted', sound.muted ? '1' : '0');
+    } catch {
+      // 忽略
+    }
+  });
+
+  const optSens = document.getElementById('opt-sens') as HTMLInputElement;
+  const optSensVal = document.getElementById('opt-sens-val')!;
+  optSens.value = String(sensScale);
+  optSensVal.textContent = sensScale.toFixed(1);
+  optSens.addEventListener('input', () => {
+    sensScale = parseFloat(optSens.value) || 1;
+    optSensVal.textContent = sensScale.toFixed(1);
+    try {
+      localStorage.setItem('mc-demo-sens', String(sensScale));
+    } catch {
+      // 忽略
+    }
+  });
+}
 
 // 触屏点击物品栏槽位直接选中
 hud.onSlotTap = (i) => {
@@ -822,10 +898,12 @@ try {
 } catch {
   // 忽略
 }
+(document.getElementById('opt-sound') as HTMLInputElement).checked = !sound.muted;
 input.onKey = (code) => {
   if (code === 'KeyM') {
     const m = !sound.muted;
     sound.setMuted(m);
+    (document.getElementById('opt-sound') as HTMLInputElement).checked = !m;
     try {
       localStorage.setItem('mc-demo-muted', m ? '1' : '0');
     } catch {
@@ -883,8 +961,8 @@ function frame(now: number): void {
       lookDx += tl.dx;
       lookDy += tl.dy;
     }
-    player.yaw -= lookDx * MOUSE_SENS;
-    player.pitch -= lookDy * MOUSE_SENS;
+    player.yaw -= lookDx * MOUSE_SENS * sensScale;
+    player.pitch -= lookDy * MOUSE_SENS * sensScale;
     const maxPitch = Math.PI / 2 - 0.001;
     player.pitch = Math.max(-maxPitch, Math.min(maxPitch, player.pitch));
 
@@ -1295,6 +1373,8 @@ if (new URLSearchParams(location.search).has('test')) {
     layer: () => ({ name: layerNameOf(player.pos.y), y: player.pos.y }),
     biome: () => world.gen.biomeAt(player.pos.x, player.pos.z),
     deaths: () => deaths,
+    creative: () => creativeMode,
+    setCreative: (v: boolean) => setCreative(v),
     structures: () => ({
       tree: world.gen.structures.tree,
       islands: world.gen.structures.islands,

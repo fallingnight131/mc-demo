@@ -1,4 +1,4 @@
-// 简单生物:猪/羊/鸡 —— 盒子模型、随机漫步、遇台阶小跳、会浮水、可击退击杀
+// 生物:僵尸(泰拉式夜间敌人)—— 盒子模型、夜间黑暗处生成、追击玩家、白天燃烧
 import * as THREE from 'three';
 import { Block, isWater } from './blocks';
 import { buildMobTextures, type MobSkin } from './textures';
@@ -10,7 +10,7 @@ const DESPAWN_DIST = 90;
 const GRAVITY = 24;
 const HOP_SPEED = 7.2; // 遇 1 格台阶的小跳
 
-export type MobKind = 'pig' | 'sheep' | 'chicken' | 'zombie';
+export type MobKind = 'zombie';
 
 interface SpeciesDef {
   hp: number;
@@ -23,9 +23,6 @@ interface SpeciesDef {
 }
 
 const SPECIES: Record<MobKind, SpeciesDef> = {
-  pig: { hp: 3, walk: 1.5, flee: 4.6, half: 0.32, height: 0.85, slowFall: false },
-  sheep: { hp: 3, walk: 1.3, flee: 4.2, half: 0.35, height: 1.0, slowFall: false },
-  chicken: { hp: 2, walk: 1.1, flee: 3.6, half: 0.2, height: 0.62, slowFall: true },
   zombie: { hp: 5, walk: 1.9, flee: 1.9, half: 0.3, height: 1.8, slowFall: false, hostile: true },
 };
 
@@ -237,90 +234,30 @@ export class Mobs {
     let legSign: number[] = [];
     const headMats = [headMat, headMat, headMat, headMat, headMat, faceMat];
 
-    if (kind === 'zombie') {
-      // 人形:头 + 衣身 + 前伸双臂 + 双腿
-      const head = new THREE.Mesh(this.box(0.42, 0.42, 0.42), headMats);
-      head.position.set(0, 1.56, 0);
-      g.add(head);
-      const body = new THREE.Mesh(this.box(0.42, 0.62, 0.22), bodyMat);
-      body.position.y = 1.02;
-      g.add(body);
-      for (const side of [-1, 1]) {
-        const arm = new THREE.Mesh(this.box(0.17, 0.62, 0.17, true), bodyMat);
-        arm.position.set(side * 0.3, 1.32, 0);
-        arm.rotation.x = -1.45; // 经典僵尸前伸
-        arms.push(arm);
-        g.add(arm);
-        const leg = new THREE.Mesh(this.box(0.18, 0.7, 0.18, true), headMat);
-        leg.position.set(side * 0.11, 0.7, 0);
-        legs.push(leg);
-        g.add(leg);
-      }
-      legSign = [1, -1];
-    } else if (kind === 'pig') {
-      const body = new THREE.Mesh(this.box(0.58, 0.5, 0.95), bodyMat);
-      body.position.y = 0.55;
-      g.add(body);
-      const head = new THREE.Mesh(this.box(0.46, 0.46, 0.34), headMats);
-      head.position.set(0, 0.66, -0.6);
-      g.add(head);
-      for (const [lx, lz] of [
-        [-0.17, -0.3],
-        [0.17, -0.3],
-        [-0.17, 0.3],
-        [0.17, 0.3],
-      ]) {
-        const leg = new THREE.Mesh(this.box(0.15, 0.3, 0.15, true), bodyMat);
-        leg.position.set(lx, 0.3, lz);
-        legs.push(leg);
-        g.add(leg);
-      }
-      legSign = [1, -1, -1, 1];
-    } else if (kind === 'sheep') {
-      const body = new THREE.Mesh(this.box(0.7, 0.6, 1.05), bodyMat);
-      body.position.y = 0.72;
-      g.add(body);
-      const head = new THREE.Mesh(this.box(0.4, 0.4, 0.32), headMats);
-      head.position.set(0, 0.95, -0.62);
-      g.add(head);
-      for (const [lx, lz] of [
-        [-0.2, -0.32],
-        [0.2, -0.32],
-        [-0.2, 0.32],
-        [0.2, 0.32],
-      ]) {
-        const leg = new THREE.Mesh(this.box(0.14, 0.42, 0.14, true), headMat);
-        leg.position.set(lx, 0.42, lz);
-        legs.push(leg);
-        g.add(leg);
-      }
-      legSign = [1, -1, -1, 1];
-    } else {
-      // chicken
-      const body = new THREE.Mesh(this.box(0.42, 0.38, 0.55), bodyMat);
-      body.position.y = 0.42;
-      g.add(body);
-      const head = new THREE.Mesh(this.box(0.24, 0.32, 0.22), headMats);
-      head.position.set(0, 0.74, -0.28);
-      g.add(head);
-      // 两侧小翅膀
-      for (const side of [-1, 1]) {
-        const wing = new THREE.Mesh(this.box(0.08, 0.26, 0.4), bodyMat);
-        wing.position.set(side * 0.25, 0.46, 0.02);
-        g.add(wing);
-      }
-      for (const lx of [-0.1, 0.1]) {
-        const leg = new THREE.Mesh(this.box(0.07, 0.24, 0.07, true), headMat);
-        leg.position.set(lx, 0.24, 0.05);
-        legs.push(leg);
-        g.add(leg);
-      }
-      legSign = [1, -1];
+    // 人形僵尸:头 + 衣身 + 前伸双臂 + 双腿
+    void kind;
+    const head = new THREE.Mesh(this.box(0.42, 0.42, 0.42), headMats);
+    head.position.set(0, 1.56, 0);
+    g.add(head);
+    const body = new THREE.Mesh(this.box(0.42, 0.62, 0.22), bodyMat);
+    body.position.y = 1.02;
+    g.add(body);
+    for (const side of [-1, 1]) {
+      const arm = new THREE.Mesh(this.box(0.17, 0.62, 0.17, true), bodyMat);
+      arm.position.set(side * 0.3, 1.32, 0);
+      arm.rotation.x = -1.45; // 经典僵尸前伸
+      arms.push(arm);
+      g.add(arm);
+      const leg = new THREE.Mesh(this.box(0.18, 0.7, 0.18, true), headMat);
+      leg.position.set(side * 0.11, 0.7, 0);
+      legs.push(leg);
+      g.add(leg);
     }
+    legSign = [1, -1];
     return { group: g, legs, legSign, arms, mats: [bodyMat, headMat, faceMat] };
   }
 
-  spawnAt(x: number, y: number, z: number, kind: MobKind = 'pig'): void {
+  spawnAt(x: number, y: number, z: number, kind: MobKind = 'zombie'): void {
     const def = SPECIES[kind];
     const { group, legs, legSign, arms, mats } = this.buildModel(kind);
     group.position.set(x, y, z);
@@ -366,18 +303,10 @@ export class Mobs {
     // 只在已加载的草地上生成(未加载区块 getBlock 返回空气,自然被拒)
     if (this.world.getBlock(x, h, z) !== Block.Grass) return;
     if (this.world.getBlock(x, h + 1, z) !== Block.Air) return;
-    const night = this.nightFactor > 0.5;
-    if (night && Math.random() < 0.55) {
-      // 夜间黑暗处刷僵尸:被火把/萤石照亮(块光 ≥8)的地方不刷
-      if (this.lightAt(x, h + 1, z) >= 8) return;
-      this.spawnAt(x + 0.5, h + 1.01, z + 0.5, 'zombie');
-      return;
-    }
-    // 被动生物夜里大幅减产
-    if (night && Math.random() > 0.25) return;
-    const r = Math.random();
-    const kind: MobKind = r < 0.4 ? 'pig' : r < 0.75 ? 'sheep' : 'chicken';
-    this.spawnAt(x + 0.5, h + 1.01, z + 0.5, kind);
+    // 只有夜间的黑暗处才刷僵尸(泰拉之夜):被火把/萤石照亮(块光 ≥8)不刷
+    if (this.nightFactor <= 0.5 || Math.random() >= 0.55) return;
+    if (this.lightAt(x, h + 1, z) >= 8) return;
+    this.spawnAt(x + 0.5, h + 1.01, z + 0.5, 'zombie');
   }
 
   update(dt: number, playerPos: THREE.Vector3): void {

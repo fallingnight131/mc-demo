@@ -41,6 +41,8 @@ export class Player {
   yaw = 0;
   pitch = 0;
   onGround = false;
+  /** 创造模式:飞行观察世界(空格升 / Shift 降),伤害豁免由上层处理 */
+  creative = false;
   private hitWall = false; // 本子步内是否发生水平碰撞(用于出水攀爬)
 
   constructor(private readonly world: BlockWorld) {}
@@ -97,6 +99,32 @@ export class Player {
   }
 
   private substep(dt: number, input: PlayerInput): void {
+    if (this.creative) {
+      // 创造飞行:无重力无水感,平移恒速,空格升 / Shift(冲刺键)降
+      const FLY = 11;
+      const fs = Math.sin(this.yaw);
+      const fc = Math.cos(this.yaw);
+      let tx = -fs * input.forward + fc * input.strafe;
+      let tz = -fc * input.forward - fs * input.strafe;
+      const flen = Math.hypot(tx, tz);
+      if (flen > 1e-6) {
+        tx = (tx / flen) * FLY;
+        tz = (tz / flen) * FLY;
+      } else {
+        tx = 0;
+        tz = 0;
+      }
+      this.vel.x = approach(this.vel.x, tx, 60 * dt);
+      this.vel.z = approach(this.vel.z, tz, 60 * dt);
+      const vy = (input.jump ? 9 : 0) + (input.sprint ? -9 : 0);
+      this.vel.y = approach(this.vel.y, vy, 60 * dt);
+      this.onGround = false;
+      this.hitWall = false;
+      this.moveAxis(1, this.vel.y * dt);
+      this.moveAxis(0, this.vel.x * dt);
+      this.moveAxis(2, this.vel.z * dt);
+      return;
+    }
     const submerged = this.isInWater(); // 身体中心没入水中
     const feetInWater = this.isTouchingWater(); // 至少脚部在水里(含水面过渡区)
 
