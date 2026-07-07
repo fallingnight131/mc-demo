@@ -532,6 +532,35 @@ check(
   `打开 ${invOpen},点选后关闭 ${invClosed},当前槽位方块 id=${slotBlock}(砖块=19)`,
 );
 
+// --- 图鉴:从设置进入,分类展示方块/家具/工具武器/植被/生物,可关闭 ---
+// 测试模式 forceLock 隐藏了遮罩;强制显示遮罩+设置页,再真实点击图鉴按钮
+await page.evaluate(() => {
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('settings-pane').classList.add('open');
+  document.getElementById('tutorial-pane').classList.remove('open');
+});
+await page.waitForTimeout(120);
+await page.click('#open-codex');
+await page.waitForTimeout(200);
+const codex = await page.evaluate(() => ({
+  open: document.getElementById('codex').classList.contains('open'),
+  cats: document.querySelectorAll('.codex-cat').length,
+  entries: document.querySelectorAll('.codex-entry').length,
+}));
+await page.screenshot({ path: `${OUT}/28-codex.png` });
+await page.click('#codex-close');
+await page.waitForTimeout(120);
+const codexClosed = await page.evaluate(
+  () => !document.getElementById('codex').classList.contains('open'),
+);
+// 复原:重新隐藏遮罩,不影响后续游戏内测试
+await page.evaluate(() => document.getElementById('overlay').classList.add('hidden'));
+check(
+  '图鉴:设置打开分类展示',
+  codex.open && codex.cats === 6 && codex.entries >= 35 && codexClosed,
+  `打开 ${codex.open},分类 ${codex.cats},条目 ${codex.entries},关闭 ${codexClosed}`,
+);
+
 // 把砖块放到面前的地上
 await page.evaluate(() => {
   const g = window.__game;

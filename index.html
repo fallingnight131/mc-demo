@@ -441,6 +441,109 @@
         pointer-events: none;
       }
 
+      /* 图鉴(从设置进入):分类展示方块 / 家具 / 工具武器 / 植被 / 生物 */
+      .codex-btn {
+        display: block;
+        width: 100%;
+        margin-top: 12px;
+        padding: 9px;
+        background: rgba(120, 160, 220, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 8px;
+        color: #d8e2f0;
+        font-size: 13px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .codex-btn:hover {
+        background: rgba(120, 160, 220, 0.32);
+      }
+      #codex {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 12, 22, 0.82);
+        z-index: 11;
+      }
+      #codex.open {
+        display: flex;
+      }
+      .codex-panel {
+        position: relative;
+        background: rgba(0, 0, 0, 0.74);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 10px;
+        padding: 16px 20px;
+        max-width: min(780px, 94vw);
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      #codex-close {
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        cursor: pointer;
+      }
+      #codex-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .codex-title {
+        color: #ffe27a;
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 6px;
+        text-align: center;
+      }
+      .codex-cat {
+        color: #9fd0ff;
+        font-size: 13px;
+        margin: 14px 0 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        padding-bottom: 4px;
+      }
+      .codex-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 8px;
+      }
+      .codex-entry {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 6px;
+        padding: 6px 9px;
+      }
+      .codex-entry canvas {
+        width: 34px;
+        height: 34px;
+        image-rendering: pixelated;
+        flex: 0 0 auto;
+      }
+      .codex-entry .cx-name {
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .codex-entry .cx-desc {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 10px;
+        line-height: 1.3;
+      }
+
       #item-name {
         position: fixed;
         left: 50%;
@@ -665,6 +768,9 @@
             <input type="range" id="opt-sens" min="0.5" max="2" step="0.1" />
             <span id="opt-sens-val">1.0</span></label
           >
+          <button id="open-codex" type="button" class="codex-btn">
+            📖 打开图鉴 · 方块 / 家具 / 工具武器 / 植被 / 生物
+          </button>
         </div>
         <div id="tutorial-pane" class="pane open">
         <ul id="help-desktop">
@@ -709,6 +815,13 @@
         <div id="inv-close">✕</div>
         <div class="inv-title">背包 — 点方块放入当前手持槽位</div>
         <div id="inv-grid"></div>
+      </div>
+    </div>
+    <div id="codex">
+      <div class="codex-panel">
+        <div id="codex-close">✕</div>
+        <div class="codex-title">图鉴</div>
+        <div id="codex-body"></div>
       </div>
     </div>
     <div id="crosshair"></div>

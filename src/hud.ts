@@ -1,8 +1,20 @@
-// HUD:物品栏、背包、调试信息、开始/暂停遮罩
+// HUD:物品栏、背包、图鉴、调试信息、开始/暂停遮罩
 export interface HotbarSlot {
   id: number;
   name: string;
   icon: HTMLCanvasElement;
+}
+
+/** 图鉴条目:图标 + 名称 + 说明 */
+export interface CodexEntry {
+  icon: HTMLCanvasElement;
+  name: string;
+  desc: string;
+}
+/** 图鉴分类(方块/家具/工具武器/植被/生物) */
+export interface CodexCategory {
+  title: string;
+  entries: CodexEntry[];
 }
 
 /** 图标画布可能同时出现在快捷栏与背包的多个槽位,DOM 中必须用副本 */
@@ -71,6 +83,41 @@ export class HUD {
 
   setInventoryVisible(v: boolean): void {
     this.inventory.classList.toggle('open', v);
+  }
+
+  /** 图鉴:分类渲染图标 + 名称 + 说明 */
+  buildCodex(categories: CodexCategory[]): void {
+    const body = document.getElementById('codex-body')!;
+    body.innerHTML = '';
+    for (const cat of categories) {
+      const head = document.createElement('div');
+      head.className = 'codex-cat';
+      head.textContent = `${cat.title}(${cat.entries.length})`;
+      body.appendChild(head);
+      const grid = document.createElement('div');
+      grid.className = 'codex-grid';
+      for (const e of cat.entries) {
+        const el = document.createElement('div');
+        el.className = 'codex-entry';
+        el.appendChild(copyIcon(e.icon));
+        const text = document.createElement('div');
+        const name = document.createElement('div');
+        name.className = 'cx-name';
+        name.textContent = e.name;
+        const desc = document.createElement('div');
+        desc.className = 'cx-desc';
+        desc.textContent = e.desc;
+        text.appendChild(name);
+        text.appendChild(desc);
+        el.appendChild(text);
+        grid.appendChild(el);
+      }
+      body.appendChild(grid);
+    }
+  }
+
+  setCodexVisible(v: boolean): void {
+    document.getElementById('codex')!.classList.toggle('open', v);
   }
 
   /** 槽位右下角的拾取计数(0 则隐藏) */

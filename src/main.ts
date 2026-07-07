@@ -28,7 +28,7 @@ import { Sky, SKY_HORIZON } from './sky';
 import { materialOf, Sound } from './sound';
 import { CHEST_LOOT } from './structures';
 import { isTool, Tool, TOOL_DEFS, TOOL_IDS } from './tools';
-import { buildCrackTextures, buildTextures, buildWaterTexture } from './textures';
+import { buildCrackTextures, buildMobTextures, buildTextures, buildWaterTexture } from './textures';
 import { isTouchDevice, TouchControls } from './touch';
 import { World, type EditData, type RayHit } from './world';
 
@@ -709,6 +709,92 @@ document.getElementById('inventory')!.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).id === 'inventory') closeInventory(true);
 });
 document.getElementById('inv-close')!.addEventListener('click', () => closeInventory(true));
+
+// --- 图鉴(设置里进入):分类展示方块/家具/工具武器/植被/生物 ---
+function codexDesc(id: number): string {
+  if (isTool(id)) return TOOL_DEFS[id].hint;
+  const def = BLOCK_DEFS[id];
+  const curated: Record<number, string> = {
+    [Block.TNT]: '点燃后爆炸,可连锁',
+    [Block.Chest]: '点按开箱得战利品(地标)',
+    [Block.Torch]: '光源 14 · 照亮洞穴',
+    [Block.Glowstone]: '光源 15 · 永久明亮',
+    [Block.Obsidian]: '极硬 · 抗爆',
+    [Block.Pumpkin]: '放置时脸朝玩家',
+    [Block.DungeonBrick]: '地牢建材 · 坚硬',
+    [Block.Cloud]: '天空岛材质',
+  };
+  if (curated[id]) return curated[id];
+  if (def.shape === 'cross') return '装饰植被 · 可穿行采除';
+  if (def.gravity) return '受重力 · 会坠落';
+  const matName =
+    { stone: '石类', wood: '木类', soft: '软质', sand: '沙质', glass: '玻璃', snow: '雪' }[
+      materialOf(id)
+    ] ?? '';
+  return `${matName} · 硬度 ${def.hardness}`;
+}
+const codexEntry = (id: number) => ({
+  icon: isTool(id) ? textures.toolIconFor(id) : textures.iconFor(id),
+  name: slotFor(id).name,
+  desc: codexDesc(id),
+});
+// 僵尸脸图标(取生物贴图的脸,放大 3×)
+const zombieFaceIcon = (() => {
+  const face = buildMobTextures().zombie.face;
+  const c = document.createElement('canvas');
+  c.width = 48;
+  c.height = 48;
+  const cx = c.getContext('2d')!;
+  cx.imageSmoothingEnabled = false;
+  cx.drawImage(face.image as CanvasImageSource, 0, 0, 16, 16, 0, 0, 48, 48);
+  return c;
+})();
+hud.buildCodex([
+  {
+    title: '方块 · 建材',
+    entries: [
+      Block.Grass, Block.Dirt, Block.Stone, Block.Cobble, Block.Sand, Block.Sandstone,
+      Block.Snow, Block.Glass, Block.Plank, Block.Log, Block.Leaves, Block.Brick,
+      Block.StoneBrick, Block.Obsidian, Block.Pumpkin, Block.Cloud, Block.DungeonBrick,
+    ].map(codexEntry),
+  },
+  {
+    title: '矿物 · 金属',
+    entries: [
+      Block.CoalOre, Block.IronOre, Block.GoldOre, Block.DiamondOre,
+      Block.IronBlock, Block.GoldBlock, Block.DiamondBlock,
+    ].map(codexEntry),
+  },
+  {
+    title: '家具 · 可交互',
+    entries: [Block.Torch, Block.Glowstone, Block.TNT, Block.Chest].map(codexEntry),
+  },
+  {
+    title: '工具 · 武器',
+    entries: [Tool.Sword, Tool.Pickaxe, Tool.Axe, Tool.FlintSteel].map(codexEntry),
+  },
+  {
+    title: '植被 · 依环境生长',
+    entries: [
+      Block.TallGrass, Block.Flower, Block.JungleFern, Block.CorruptThorn, Block.CrimsonVine,
+    ].map(codexEntry),
+  },
+  {
+    title: '生物',
+    entries: [{ icon: zombieFaceIcon, name: '僵尸', desc: '夜间敌人 · 惧光 · 日光下燃烧' }],
+  },
+]);
+document.getElementById('open-codex')!.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hud.setCodexVisible(true);
+});
+document.getElementById('codex-close')!.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hud.setCodexVisible(false);
+});
+document.getElementById('codex')!.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).id === 'codex') hud.setCodexVisible(false);
+});
 
 // 兜底:游戏中途失锁且无遮罩时,点画布重新锁定
 renderer.domElement.addEventListener('click', () => {
