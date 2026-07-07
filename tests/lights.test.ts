@@ -13,10 +13,10 @@ describe('块光照', () => {
   beforeAll(() => {
     const mat = new THREE.MeshBasicMaterial();
     world = new World(mat, mat, 1337);
-    world.warmup(0, 0);
-    const s = world.gen.findSpawn();
-    x0 = Math.floor(s.x);
-    z0 = Math.floor(s.z);
+    // 测试场地在 (80,80):世界树立于原点,它的生成萤石会干扰光源计数
+    world.warmup(5, 5);
+    x0 = 80;
+    z0 = 80;
     h0 = world.gen.heightAt(x0, z0);
   });
 
@@ -74,7 +74,7 @@ describe('块光照', () => {
     expect(lights.addSource(999, 0, 0, 14)).toBe(false); // 超上限
   });
 
-  it('负坐标键编码正确(世界树在 (-30,-80),编码错会静默失灵)', () => {
+  it('负坐标键编码正确(世界西半球的光源,编码错会静默失灵)', () => {
     const lights = new Lights(() => false);
     lights.addSource(-300, 40, -520, 14);
     const changed = lights.recompute();

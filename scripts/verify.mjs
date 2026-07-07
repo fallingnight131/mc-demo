@@ -1404,17 +1404,16 @@ if (biomeSpots.corruption) {
 const treeInfo = await page.evaluate(() => {
   const g = window.__game;
   const t = g.structures().tree;
-  // 站在树与出生点之间 22 格处,面向树看树冠
-  const ang = Math.atan2(t.z, t.x);
-  const px = t.x - Math.cos(ang) * 22;
-  const pz = t.z - Math.sin(ang) * 22;
+  // 世界树立于世界中央:退到 56 格外收下整棵西兰花巨冠
+  const px = t.x + 56;
+  const pz = t.z + 9;
   g.world.warmup(Math.floor(t.x / 16), Math.floor(t.z / 16));
   g.world.warmup(Math.floor(px / 16), Math.floor(pz / 16));
   const h = g.world.gen.heightAt(Math.round(px), Math.round(pz));
   g.player.pos.set(px + 0.5, h + 1.01, pz + 0.5);
   g.player.vel.set(0, 0, 0);
   g.player.yaw = Math.atan2(-(t.x - px), -(t.z - pz));
-  g.player.pitch = 0.42;
+  g.player.pitch = 0.34;
   return t;
 });
 await page.waitForTimeout(1800);
@@ -1428,8 +1427,8 @@ const treeCheck = await page.evaluate((t) => {
   const eyeY = t.ground + 1.01 + 1.62;
   g.player.pitch = Math.atan2(t.ground + 1.5 - eyeY, 2);
   let logs = 0;
-  for (let y = t.ground; y < t.ground + 40; y += 4) {
-    if (g.world.getBlock(t.x + 4, y, t.z) === 5) logs++;
+  for (let y = t.ground + 8; y < t.ground + 48; y += 4) {
+    if (g.world.getBlock(t.x + 7, y, t.z) === 5) logs++;
   }
   return {
     logs,
@@ -1489,6 +1488,25 @@ const islandHud = await page.evaluate(() => ({
   y: window.__game.player.pos.y,
 }));
 await page.screenshot({ path: `${OUT}/23b-skyisland.png` });
+// 巨岛远景:站上岛缘回望神殿与天池
+await page.evaluate(() => {
+  const g = window.__game;
+  const isl = g.structures().islands[0];
+  let sx = isl.x + 18;
+  for (let dx = 22; dx >= 14; dx--) {
+    const id = g.world.getBlock(isl.x + dx, isl.y, isl.z + 8);
+    if (id !== 0 && g.world.getBlock(isl.x + dx, isl.y + 1, isl.z + 8) === 0) {
+      sx = isl.x + dx;
+      break;
+    }
+  }
+  g.player.pos.set(sx + 0.5, isl.y + 1.01, isl.z + 8.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.atan2(-(isl.x - sx), -(isl.z - (isl.z + 8)));
+  g.player.pitch = -0.04;
+});
+await page.waitForTimeout(1200);
+await page.screenshot({ path: `${OUT}/23b2-skyisland-far.png` });
 check(
   '地标:天空岛',
   islandCheck.chest && islandCheck.floating && islandHud.meter.includes('天空层'),

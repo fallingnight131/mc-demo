@@ -318,12 +318,13 @@ export class Generator {
     return data;
   }
 
-  /** 从原点向外找一个适合出生的草地柱(避开树木与陡坡) */
+  /** 从原点向外找一个适合出生的草地柱(避开世界树根系、树木与陡坡) */
   findSpawn(): { x: number; y: number; z: number } {
-    for (let r = 0; r < 64; r++) {
+    for (let r = 22; r < 64; r++) {
       for (let dx = -r; dx <= r; dx++) {
         for (let dz = -r; dz <= r; dz++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          if (Math.hypot(dx, dz) < 22) continue; // 世界树立于原点,根系外出生
           const h = this.heightAt(dx, dz);
           if (h <= SEA_LEVEL + 1 || h >= SNOW_LEVEL) continue;
           if (this.hasPumpkin(dx, dz)) continue; // 别出生在南瓜里
