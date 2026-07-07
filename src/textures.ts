@@ -420,6 +420,42 @@ const painters: Record<number, Painter> = {
       px(img, (rng() * TS) | 0, (rng() * TS) | 0, 70, 46, 100);
     }
   },
+  // 血腥之地(镜像腐化,红肉调)
+  [Tile.CrimsonGrass]: (img, rng) => {
+    noiseFill(img, rng, [150, 48, 50], 12);
+    for (let i = 0; i < 14; i++) px(img, (rng() * TS) | 0, (rng() * TS) | 0, 122, 34, 38);
+  },
+  [Tile.Crimstone]: (img, rng) => {
+    noiseFill(img, rng, [104, 52, 52], 8);
+    for (let i = 0; i < 6; i++) {
+      const sx = (rng() * TS) | 0;
+      const sy = (rng() * TS) | 0;
+      for (let k = 0; k < 3; k++) px(img, (sx + k) % TS, sy, 82, 38, 40);
+    }
+  },
+  [Tile.CrimsonLeaves]: (img, rng) => {
+    noiseFill(img, rng, [134, 46, 48], 14);
+    for (let i = 0; i < 12; i++) px(img, (rng() * TS) | 0, (rng() * TS) | 0, 104, 32, 36);
+  },
+  [Tile.CrimsonVine]: (img, rng) => {
+    void rng;
+    // 血腥藤:红肉主干 + 亮红刺尖(镜像腐化荆棘)
+    const stem = [[8, 15], [8, 14], [7, 13], [7, 12], [8, 11], [8, 10], [7, 9], [7, 8], [8, 7], [8, 6], [9, 5], [9, 4]];
+    for (const [x, y] of stem) px(img, x, y, 156, 52, 54);
+    const thorns = [
+      [[7, 12], [6, 11], [5, 10]],
+      [[8, 10], [9, 9], [10, 8]],
+      [[7, 8], [6, 7], [5, 6]],
+      [[9, 5], [10, 4], [11, 3]],
+    ];
+    for (const t of thorns) {
+      for (let i = 0; i < t.length; i++) {
+        const [x, y] = t[i];
+        if (i === t.length - 1) px(img, x, y, 200, 96, 92);
+        else px(img, x, y, 112, 34, 38);
+      }
+    }
+  },
   [Tile.ChestSide]: (img, rng) => chestBase(img, rng),
   [Tile.ChestFront]: (img, rng) => {
     chestBase(img, rng);

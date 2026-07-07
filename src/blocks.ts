@@ -57,6 +57,10 @@ export const Tile = {
   Flower: 48, // 野花(红黄花)
   JungleFern: 49, // 丛林蕨
   CorruptThorn: 50, // 腐化荆棘
+  CrimsonGrass: 51, // 血腥草地
+  Crimstone: 52, // 猩红石
+  CrimsonLeaves: 53, // 血腥树叶
+  CrimsonVine: 54, // 血腥藤(十字面片)
 } as const;
 
 export const Block = {
@@ -113,6 +117,11 @@ export const Block = {
   Flower: 47,
   JungleFern: 48,
   CorruptThorn: 49,
+  // 血腥之地(泰拉血腥群系):血腥草/猩红石/血腥树叶/血腥藤
+  CrimsonGrass: 50,
+  Crimstone: 51,
+  CrimsonLeaves: 52,
+  CrimsonVine: 53,
 } as const;
 
 export interface BlockDef {
@@ -192,6 +201,11 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '野花', tiles: [T.Flower, T.Flower, T.Flower, T.Flower, T.Flower, T.Flower], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
   { name: '丛林蕨', tiles: [T.JungleFern, T.JungleFern, T.JungleFern, T.JungleFern, T.JungleFern, T.JungleFern], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
   { name: '腐化荆棘', tiles: [T.CorruptThorn, T.CorruptThorn, T.CorruptThorn, T.CorruptThorn, T.CorruptThorn, T.CorruptThorn], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
+  // 血腥之地方块(镜像腐化之地,红肉调):血腥草/猩红石/血腥树叶/血腥藤
+  { name: '血腥草', tiles: [T.CrimsonGrass, T.CrimsonGrass, T.CrimsonGrass, T.CrimsonGrass, T.CrimsonGrass, T.CrimsonGrass], solid: true, opaque: true, hardness: 0.45 },
+  { name: '猩红石', tiles: [T.Crimstone, T.Crimstone, T.Crimstone, T.Crimstone, T.Crimstone, T.Crimstone], solid: true, opaque: true, hardness: 1.4 },
+  { name: '血腥树叶', tiles: [T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves], solid: true, opaque: true, hardness: 0.2, sway: true },
+  { name: '血腥藤', tiles: [T.CrimsonVine, T.CrimsonVine, T.CrimsonVine, T.CrimsonVine, T.CrimsonVine, T.CrimsonVine], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
 ];
 
 /** 方块发光等级(0..15) */
@@ -249,6 +263,7 @@ export const PLACEABLE: number[] = [
   Block.Flower,
   Block.JungleFern,
   Block.CorruptThorn,
+  Block.CrimsonVine,
 ];
 
 /** 按放置者视角选南瓜朝向:脸转向玩家 */

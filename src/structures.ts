@@ -12,7 +12,7 @@ export interface TerrainInfo {
   seed: number;
   heightAt(x: number, z: number): number;
   hellFloor(x: number, z: number): number;
-  biomeAt(x: number, z: number): 'forest' | 'jungle' | 'corruption';
+  biomeAt(x: number, z: number): 'forest' | 'jungle' | 'corruption' | 'crimson';
 }
 
 interface Box {

@@ -49,6 +49,7 @@ scene.fog = new THREE.Fog(SKY_COLOR, fogFar * 0.55, fogFar);
 const WATER_FOG_COLOR = 0x2456b0;
 const JUNGLE_TINT = new THREE.Color(0x7ec98f);
 const CORRUPT_TINT = new THREE.Color(0x8f7cb8);
+const CRIMSON_TINT = new THREE.Color(0xc4585a);
 const waterTintEl = document.getElementById('water-tint')!;
 let wasUnderwater = false;
 
@@ -1111,10 +1112,11 @@ function frame(now: number): void {
     fog.far = 44;
   } else {
     fog.color.setRGB(...dn.horizon, THREE.SRGBColorSpace);
-    // 群系色调:丛林偏绿、腐化偏紫
+    // 群系色调:丛林偏绿、腐化偏紫、血腥偏红
     const biome = world.gen.biomeAt(player.pos.x, player.pos.z);
     if (biome === 'jungle') fog.color.lerp(JUNGLE_TINT, 0.22);
     else if (biome === 'corruption') fog.color.lerp(CORRUPT_TINT, 0.3);
+    else if (biome === 'crimson') fog.color.lerp(CRIMSON_TINT, 0.3);
     fog.near = fogFar * 0.55;
     fog.far = fogFar;
   }
@@ -1201,12 +1203,14 @@ function frame(now: number): void {
       const biomeNow = onSurface ? world.gen.biomeAt(player.pos.x, player.pos.z) : 'forest';
       const rumble = py2 < LAYER_HELL_TOP + 3 ? 0.42 + 0.16 * Math.sin(now * 0.0006) : 0;
       const eerie =
-        onSurface && biomeNow === 'corruption' ? 0.75 + 0.25 * Math.sin(now * 0.00037) : 0;
+        onSurface && (biomeNow === 'corruption' || biomeNow === 'crimson')
+          ? 0.75 + 0.25 * Math.sin(now * 0.00037)
+          : 0;
       sound.setScape(rumble, eerie);
       // 点缀音:白昼林间鸟鸣 / 夜晚蟋蟀 / 地下滴水
       if (!wasUnderwater) {
         const r = Math.random();
-        if (onSurface && dn.brightness > 0.55 && biomeNow !== 'corruption') {
+        if (onSurface && dn.brightness > 0.55 && biomeNow !== 'corruption' && biomeNow !== 'crimson') {
           if (r < (biomeNow === 'jungle' ? 0.11 : 0.045)) sound.chirp();
         } else if (onSurface && dn.starAlpha > 0.5) {
           if (r < 0.08) sound.cricket();
@@ -1334,7 +1338,7 @@ function frame(now: number): void {
   const depth = Math.round(SEA_LEVEL + 6 - player.pos.y);
   const biomeLabel =
     layerName === '地表'
-      ? { forest: '森林', jungle: '丛林', corruption: '腐化之地' }[
+      ? { forest: '森林', jungle: '丛林', corruption: '腐化之地', crimson: '血腥之地' }[
           world.gen.biomeAt(player.pos.x, player.pos.z)
         ]
       : layerName;

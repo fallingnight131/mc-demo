@@ -21,16 +21,19 @@ describe('Terraria 3D 生物群系', () => {
     throw new Error(`no land for ${biome}`);
   }
 
-  it('群系按方位分区:中心森林,东南丛林,西侧腐化', () => {
+  it('群系按方位分区:中心森林,东南丛林,西侧腐化,另一侧血腥', () => {
     expect(gen.biomeAt(0, 0)).toBe('forest');
     expect(gen.biomeAt(30, -30)).toBe('forest'); // 出生盆地全森林
-    // 两个扇区都存在陆地群系(位置分区而非随机)
+    // 三个邪恶/特色扇区都存在陆地群系(位置分区而非随机)
     const j = findLand('jungle', 0.85, 1.6);
     const c = findLand('corruption', 3.45, 4.0);
+    const cr = findLand('crimson', 5.2, 5.9);
     expect(gen.biomeAt(j.x, j.z)).toBe('jungle');
     expect(gen.biomeAt(c.x, c.z)).toBe('corruption');
-    // 两扇区分居大陆两侧
+    expect(gen.biomeAt(cr.x, cr.z)).toBe('crimson');
+    // 分居大陆各侧
     expect(Math.hypot(j.x - c.x, j.z - c.z)).toBeGreaterThan(250);
+    expect(Math.hypot(c.x - cr.x, c.z - cr.z)).toBeGreaterThan(250);
   });
 
   it('丛林树木密度显著高于森林', () => {
@@ -76,6 +79,33 @@ describe('Terraria 3D 生物群系', () => {
     // 深谷存在:腐化环带内找 chasm 列,其地表到 57 全空
     let found = false;
     for (let a = 3.15; a < 4.25 && !found; a += 0.01) {
+      for (let d = 255; d < 340 && !found; d += 3) {
+        const x = Math.round(Math.cos(a) * d);
+        const z = Math.round(Math.sin(a) * d);
+        if (gen.chasmAt(x, z) && gen.heightAt(x, z) > SEA_LEVEL + 2) found = true;
+      }
+    }
+    expect(found).toBe(true);
+  });
+
+  it('血腥区:血腥草地、浅层猩红石、深谷直插洞穴层', () => {
+    const spot = findLand('crimson', 5.2, 5.9);
+    const cx = Math.round(spot.x / CS);
+    const cz = Math.round(spot.z / CS);
+    let crimsonGrass = 0;
+    let crimstone = 0;
+    for (const [dx, dz] of [[0, 0], [1, 0], [0, 1]]) {
+      const data = gen.generateChunk(cx + dx, cz + dz);
+      for (let i = 0; i < data.length; i++) {
+        if (data[i] === Block.CrimsonGrass) crimsonGrass++;
+        if (data[i] === Block.Crimstone) crimstone++;
+      }
+    }
+    expect(crimsonGrass).toBeGreaterThan(50);
+    expect(crimstone).toBeGreaterThan(200);
+    // 血腥深谷:扇区内找 chasm 列
+    let found = false;
+    for (let a = 5.05; a < 6.05 && !found; a += 0.01) {
       for (let d = 255; d < 340 && !found; d += 3) {
         const x = Math.round(Math.cos(a) * d);
         const z = Math.round(Math.sin(a) * d);

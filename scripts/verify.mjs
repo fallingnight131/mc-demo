@@ -1468,7 +1468,11 @@ const biomeSpots = await page.evaluate(() => {
     }
     return null;
   };
-  return { jungle: find('jungle', 0.85, 1.6), corruption: find('corruption', 3.45, 4.0) };
+  return {
+    jungle: find('jungle', 0.85, 1.6),
+    corruption: find('corruption', 3.45, 4.0),
+    crimson: find('crimson', 5.2, 5.9),
+  };
 });
 if (biomeSpots.jungle) {
   await page.evaluate(({ x, z }) => {
@@ -1515,6 +1519,43 @@ if (biomeSpots.corruption) {
   );
 } else {
   check('群系:腐化之地', false, '未找到腐化陆地');
+}
+if (biomeSpots.crimson) {
+  await page.evaluate(({ x, z }) => {
+    const g = window.__game;
+    g.world.warmup(Math.floor(x / 16), Math.floor(z / 16));
+    g.player.pos.set(x + 0.5, g.world.gen.heightAt(x, z) + 1.01, z + 0.5);
+    g.player.vel.set(0, 0, 0);
+    g.player.yaw = Math.PI / 5;
+    g.player.pitch = 0.02;
+  }, biomeSpots.crimson);
+  await page.waitForTimeout(1600);
+  const crimsonHud = await page.evaluate(() => ({
+    biome: window.__game.biome(),
+    meter: document.getElementById('depth-meter').textContent,
+    // 血腥草地存在(镜像腐化断言:该扇区确为血腥地貌)
+    crimGrass: (() => {
+      const g = window.__game;
+      const p = g.player.pos;
+      let n = 0;
+      for (let dx = -6; dx <= 6; dx++) {
+        for (let dz = -6; dz <= 6; dz++) {
+          const x = Math.floor(p.x) + dx;
+          const z = Math.floor(p.z) + dz;
+          if (g.world.getBlock(x, g.world.gen.heightAt(x, z), z) === 50) n++; // CrimsonGrass
+        }
+      }
+      return n;
+    })(),
+  }));
+  await page.screenshot({ path: `${OUT}/22c-crimson.png` });
+  check(
+    '群系:血腥之地',
+    crimsonHud.biome === 'crimson' && crimsonHud.meter.includes('血腥') && crimsonHud.crimGrass > 10,
+    `biome=${crimsonHud.biome},深度计 "${crimsonHud.meter}",血腥草 ${crimsonHud.crimGrass}`,
+  );
+} else {
+  check('群系:血腥之地', false, '未找到血腥陆地');
 }
 // --- Terraria 3D · Phase 4:地标(世界树/天空岛/地牢)与宝箱 ---
 // 世界树:外观截图 → 进树开底层宝箱

@@ -104,7 +104,7 @@ export class Generator {
    * 群系按方位分区(泰拉式"位置决定群系"):
    * 出生盆地与环山恒为森林;环山之外按方位角划出丛林与腐化之地。
    */
-  biomeAt(x: number, z: number): 'forest' | 'jungle' | 'corruption' {
+  biomeAt(x: number, z: number): 'forest' | 'jungle' | 'corruption' | 'crimson' {
     const d = Math.hypot(x, z);
     if (d < 225) return 'forest'; // 出生盆地与山脉(群系从山外坡开始)
     let a = Math.atan2(z, x); // -π..π
@@ -112,6 +112,7 @@ export class Generator {
     if (a < 0) a += Math.PI * 2;
     if (a > 0.5 && a < 1.9) return 'jungle';
     if (a > 3.1 && a < 4.3) return 'corruption';
+    if (a > 5.0 && a < 6.1) return 'crimson'; // 血腥之地:与腐化相对的另一侧扇区
     return 'forest';
   }
 
@@ -132,9 +133,10 @@ export class Generator {
     return best;
   }
 
-  /** 腐化深谷:腐化区内蜿蜒裂缝,从地表直插洞穴层 */
+  /** 腐化/血腥深谷:两大邪恶群系内蜿蜒裂缝,从地表直插洞穴层 */
   chasmAt(x: number, z: number): boolean {
-    if (this.biomeAt(x, z) !== 'corruption') return false;
+    const b = this.biomeAt(x, z);
+    if (b !== 'corruption' && b !== 'crimson') return false;
     const d = Math.hypot(x, z);
     if (d < 250 || d > CONTINENT_RADIUS - 60) return false;
     return Math.abs(this.chasmN.fbm(x * 0.012, z * 0.012, 2)) < 0.035;
@@ -144,7 +146,7 @@ export class Generator {
     const t = hash2(x, z, this.seed ^ 0x51ab3);
     const b = this.biomeAt(x, z);
     if (b === 'jungle') return t < 0.03; // 丛林茂密
-    if (b === 'corruption') return t < 0.005; // 腐化稀疏枯树
+    if (b === 'corruption' || b === 'crimson') return t < 0.005; // 邪恶群系稀疏枯树
     return t < 0.007;
   }
 
@@ -201,10 +203,15 @@ export class Generator {
    * 依环境生长的地表植被(十字面片装饰),返回植被方块 id 或 0(不长)。
    * 森林:青草常见 + 野花点缀;丛林:蕨类繁茂;腐化之地:稀疏荆棘。
    */
-  private plantAt(x: number, z: number, biome: 'forest' | 'jungle' | 'corruption'): number {
+  private plantAt(
+    x: number,
+    z: number,
+    biome: 'forest' | 'jungle' | 'corruption' | 'crimson',
+  ): number {
     const r = hash2(x, z, this.seed ^ 0x9b7d);
     if (biome === 'jungle') return r < 0.22 ? Block.JungleFern : 0;
     if (biome === 'corruption') return r < 0.08 ? Block.CorruptThorn : 0;
+    if (biome === 'crimson') return r < 0.08 ? Block.CrimsonVine : 0;
     if (r < 0.02) return Block.Flower;
     if (r < 0.16) return Block.TallGrass;
     return 0;
@@ -263,13 +270,17 @@ export class Generator {
             id = Block.Air;
           } else if (y < h - 3) {
             id = this.oreAt(wx, y, wz);
-            // 腐化区浅层石头换黑檀石
-            if (biome === 'corruption' && id === Block.Stone && y > h - 14) id = Block.EbonStone;
+            // 邪恶群系浅层石头换邪石:腐化→黑檀石,血腥→猩红石
+            if (id === Block.Stone && y > h - 14) {
+              if (biome === 'corruption') id = Block.EbonStone;
+              else if (biome === 'crimson') id = Block.Crimstone;
+            }
           } else if (y < h) id = sandy ? Block.Sand : Block.Dirt;
           else if (sandy) id = Block.Sand;
           else if (snowy) id = Block.Snow;
           else if (biome === 'jungle') id = Block.JungleGrass;
           else if (biome === 'corruption') id = Block.CorruptGrass;
+          else if (biome === 'crimson') id = Block.CrimsonGrass;
           else id = Block.Grass;
           data[idx(lx, y, lz)] = id;
         }
@@ -302,13 +313,15 @@ export class Generator {
         if (this.structures.suppressSurfaceAt(wx, wz)) continue; // 地标脚下不长树
 
         const treeBiome = this.biomeAt(wx, wz);
-        // 丛林树更高大;腐化树矮小紫叶
+        // 丛林树更高大;腐化树紫叶;血腥树红叶
         const leafId =
           treeBiome === 'jungle'
             ? Block.JungleLeaves
             : treeBiome === 'corruption'
               ? Block.CorruptLeaves
-              : Block.Leaves;
+              : treeBiome === 'crimson'
+                ? Block.CrimsonLeaves
+                : Block.Leaves;
         const extra = treeBiome === 'jungle' ? 3 : treeBiome === 'corruption' ? 0 : 0;
         const ht = this.treeHeight(wx, wz) + extra;
         const topY = h + ht;
