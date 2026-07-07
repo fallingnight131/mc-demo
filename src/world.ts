@@ -38,7 +38,10 @@ export class World {
   readonly lights = new Lights((x, y, z) => BLOCK_DEFS[this.getBlock(x, y, z)].opaque);
   /** 任意格子数据变化后的回调(重力方块唤醒等) */
   onBlockChanged: ((x: number, y: number, z: number) => void) | null = null;
+  /** 需要全量重算光照(光源移除/遮挡变化) */
   private lightDirty = false;
+  /** 新增光源队列:走单源增量传播,避免全量重算 */
+  private readonly lightAdds: Array<[number, number, number, number]> = [];
   /** 玩家编辑覆盖层:区块卸载重生成后回放,亦用于存档 */
   private readonly edits = new Map<string, Map<number, number>>();
   editsDirty = false;
@@ -156,9 +159,8 @@ export class World {
       this.lights.removeSource(x, y, z);
       this.lightDirty = true;
     }
-    if (lightLevel(id) > 0) {
-      this.lights.addSource(x, y, z, lightLevel(id));
-      this.lightDirty = true;
+    if (lightLevel(id) > 0 && this.lights.addSource(x, y, z, lightLevel(id))) {
+      this.lightAdds.push([x, y, z, lightLevel(id)]);
     }
     if (
       !this.lightDirty &&
@@ -183,11 +185,24 @@ export class World {
     }
   }
 
-  /** 光照重算并把受影响格子的区块并入待重建集合 */
+  /** 光照更新并把受影响格子的区块并入待重建集合:
+   *  新增光源走单源增量传播;移除/遮挡变化才全量重播 */
   private flushLight(dirty: Set<Chunk>): void {
-    if (!this.lightDirty) return;
-    this.lightDirty = false;
-    for (const [x, , z] of this.lights.recompute()) {
+    let changed: Array<[number, number, number]>;
+    if (this.lightDirty) {
+      this.lightDirty = false;
+      this.lightAdds.length = 0; // 全量重算已覆盖新增
+      changed = this.lights.recompute();
+    } else if (this.lightAdds.length > 0) {
+      changed = [];
+      for (const [x, y, z, lv] of this.lightAdds) {
+        changed.push(...this.lights.spreadInto(x, y, z, lv));
+      }
+      this.lightAdds.length = 0;
+    } else {
+      return;
+    }
+    for (const [x, , z] of changed) {
       const cx = Math.floor(x / CS);
       const cz = Math.floor(z / CS);
       this.addIfPresent(cx, cz, dirty);
@@ -275,9 +290,14 @@ export class World {
       const y = Math.floor(i / (CS * CS));
       const lz = Math.floor(i / CS) % CS;
       const lx = i % CS;
-      if (add) this.lights.addSource(c.cx * CS + lx, y, c.cz * CS + lz, lv);
-      else this.lights.removeSource(c.cx * CS + lx, y, c.cz * CS + lz);
-      this.lightDirty = true;
+      if (add) {
+        if (this.lights.addSource(c.cx * CS + lx, y, c.cz * CS + lz, lv)) {
+          this.lightAdds.push([c.cx * CS + lx, y, c.cz * CS + lz, lv]);
+        }
+      } else {
+        this.lights.removeSource(c.cx * CS + lx, y, c.cz * CS + lz);
+        this.lightDirty = true;
+      }
     }
   }
 
@@ -332,14 +352,27 @@ export class World {
         this.ensureData(cx + dx, cz + dz);
       }
     }
-    if (this.lightDirty) {
-      this.lightDirty = false;
-      this.lights.recompute(); // 网格尚未建,直接刷新光照数据即可
-    }
+    this.flushLight(new Set()); // 网格尚未建,只需刷新光照数据
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
         this.rebuildMesh(this.ensureData(cx + dx, cz + dz));
       }
+    }
+  }
+
+  /**
+   * 绘制距离剔除:超出雾墙的区块网格不提交渲染。
+   * 洞穴/地狱的雾距很短(34/56),剔除后地下场景省掉约八成 draw call。
+   */
+  applyDrawDistance(px: number, pz: number, dist: number): void {
+    const limit = dist + 12; // 区块水平半对角 ~11.3 的余量
+    for (const c of this.chunks.values()) {
+      if (!c.meshed) continue;
+      const dx = c.cx * CS + CS / 2 - px;
+      const dz = c.cz * CS + CS / 2 - pz;
+      const visible = Math.hypot(dx, dz) <= limit;
+      if (c.solidMesh) c.solidMesh.visible = visible;
+      if (c.waterMesh) c.waterMesh.visible = visible;
     }
   }
 
@@ -389,7 +422,7 @@ export class World {
     }
 
     // 流式加载/卸载改变了生成光源 → 冲洗光照并重建受影响网格
-    if (this.lightDirty) {
+    if (this.lightDirty || this.lightAdds.length > 0) {
       const dirty = new Set<Chunk>();
       this.flushLight(dirty);
       for (const c of dirty) {

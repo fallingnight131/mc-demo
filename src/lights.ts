@@ -1,13 +1,18 @@
 // 体素块光照:光源(火把/萤石)BFS 传播,0..15 逐格衰减,不透明方块遮挡。
-// 稀疏存储(只存 >0 的格子);重算策略为全量重播所有光源 —— 光源数量
-// 有上限(128),demo 规模下一次重算 <20ms,放置光源时的顿挫可接受。
+// 稀疏存储(只存 >0 的格子),整数键(字符串键的哈希/分配是热点)。
+// 新增光源走单源增量传播(区块流入/放火把零卡顿);
+// 移除光源或遮挡变化才全量重播,demo 规模一次几毫秒。
 
 const MAX_SOURCES = 128;
-const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
+// 键编码:x,z ∈ [-1024,1023](11 位),y ∈ [0,255](8 位),共 30 位
+const key = (x: number, y: number, z: number) => (((x + 1024) << 19) | ((z + 1024) << 8) | y) | 0;
+const keyX = (k: number) => (k >>> 19) - 1024;
+const keyY = (k: number) => k & 255;
+const keyZ = (k: number) => ((k >>> 8) & 2047) - 1024;
 
 export class Lights {
-  private readonly sources = new Map<string, { x: number; y: number; z: number; level: number }>();
-  private light = new Map<string, number>();
+  private readonly sources = new Map<number, { x: number; y: number; z: number; level: number }>();
+  private light = new Map<number, number>();
 
   constructor(private readonly isOpaque: (x: number, y: number, z: number) => boolean) {}
 
@@ -43,19 +48,30 @@ export class Lights {
   }
 
   /**
+   * 单源增量传播:把一个新光源直接并入现有光照(取 max),
+   * 返回光值升高的格子列表。用于区块流入/放置光源,避免全量重算。
+   */
+  spreadInto(sx: number, sy: number, sz: number, level: number): Array<[number, number, number]> {
+    const changed: Array<[number, number, number]> = [];
+    this.spread(this.light, sx, sy, sz, level, (k) => {
+      changed.push([keyX(k), keyY(k), keyZ(k)]);
+    });
+    return changed;
+  }
+
+  /**
    * 全量重算:重播所有光源的 BFS,返回光值发生变化的格子列表
    * (供调用方把所在区块标脏重建网格)。
    */
   recompute(): Array<[number, number, number]> {
-    const next = new Map<string, number>();
+    const next = new Map<number, number>();
     for (const s of this.sources.values()) {
       this.spread(next, s.x, s.y, s.z, s.level);
     }
     // 差异 = 新旧任一方有而另一方不同的格子
     const changed: Array<[number, number, number]> = [];
-    const collect = (k: string) => {
-      const [x, y, z] = k.split(',').map(Number);
-      changed.push([x, y, z]);
+    const collect = (k: number) => {
+      changed.push([keyX(k), keyY(k), keyZ(k)]);
     };
     for (const [k, v] of next) {
       if (this.light.get(k) !== v) collect(k);
@@ -68,14 +84,25 @@ export class Lights {
   }
 
   /** 单光源 BFS:光能进入非不透明格,进入后向六邻衰减 1 继续 */
-  private spread(out: Map<string, number>, sx: number, sy: number, sz: number, level: number): void {
+  private spread(
+    out: Map<number, number>,
+    sx: number,
+    sy: number,
+    sz: number,
+    level: number,
+    onRaise?: (k: number) => void,
+  ): void {
     const queue: Array<[number, number, number, number]> = [[sx, sy, sz, level]];
-    const seen = new Map<string, number>();
+    const seen = new Map<number, number>();
     seen.set(key(sx, sy, sz), level);
-    while (queue.length > 0) {
-      const [x, y, z, l] = queue.shift()!;
+    let head = 0; // 队列下标代替 shift(),避免 O(n²)
+    while (head < queue.length) {
+      const [x, y, z, l] = queue[head++];
       const k = key(x, y, z);
-      if ((out.get(k) ?? 0) < l) out.set(k, l);
+      if ((out.get(k) ?? 0) < l) {
+        out.set(k, l);
+        onRaise?.(k);
+      }
       if (l <= 1) continue;
       for (const [dx, dy, dz] of [
         [1, 0, 0],

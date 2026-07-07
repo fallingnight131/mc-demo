@@ -69,8 +69,44 @@ describe('块光照', () => {
 
     const lights = new Lights(() => false);
     for (let i = 0; i < 128; i++) {
-      expect(lights.addSource(i * 40, 0, 0, 14)).toBe(true);
+      expect(lights.addSource(i * 7 - 448, 0, i, 14)).toBe(true);
     }
-    expect(lights.addSource(9999, 0, 0, 14)).toBe(false); // 超上限
+    expect(lights.addSource(999, 0, 0, 14)).toBe(false); // 超上限
+  });
+
+  it('负坐标键编码正确(世界树在 (-30,-80),编码错会静默失灵)', () => {
+    const lights = new Lights(() => false);
+    lights.addSource(-300, 40, -520, 14);
+    const changed = lights.recompute();
+    expect(lights.lightAt(-300, 40, -520)).toBe(14);
+    expect(lights.lightAt(-299, 40, -520)).toBe(13);
+    expect(lights.lightAt(-300, 41, -521)).toBe(12);
+    // 变化格子的解码坐标要落在光源邻域内
+    for (const [x, y, z] of changed) {
+      expect(Math.abs(x + 300)).toBeLessThanOrEqual(14);
+      expect(Math.abs(y - 40)).toBeLessThanOrEqual(14);
+      expect(Math.abs(z + 520)).toBeLessThanOrEqual(14);
+    }
+  });
+
+  it('增量传播与全量重算等价(区块流入光源零卡顿路径)', () => {
+    const a = new Lights(() => false);
+    a.addSource(10, 60, -20, 15);
+    a.recompute();
+    a.addSource(14, 60, -20, 12);
+    const raised = a.spreadInto(14, 60, -20, 12);
+    // 对照:同样两个光源全量重算
+    const b = new Lights(() => false);
+    b.addSource(10, 60, -20, 15);
+    b.addSource(14, 60, -20, 12);
+    b.recompute();
+    for (let x = -8; x <= 32; x++) {
+      expect(a.lightAt(x, 60, -20)).toBe(b.lightAt(x, 60, -20));
+    }
+    // 只有靠近新光源、且旧光照更弱的一侧被抬升
+    expect(raised.length).toBeGreaterThan(0);
+    for (const [x] of raised) {
+      expect(x).toBeGreaterThan(10);
+    }
   });
 });

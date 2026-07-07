@@ -63,6 +63,8 @@ export class Sound {
   private mutedFlag = false;
   private windGain: GainNode | null = null;
   private waterGain: GainNode | null = null;
+  private rumbleGain: GainNode | null = null;
+  private eerieGain: GainNode | null = null;
 
   get muted(): boolean {
     return this.mutedFlag;
@@ -103,6 +105,9 @@ export class Sound {
         };
         this.windGain = mkLoop('lowpass', 320, 0.4);
         this.waterGain = mkLoop('bandpass', 950, 0.8);
+        // 声景通道:地狱低频隆隆 / 腐化之地高 Q 呜咽
+        this.rumbleGain = mkLoop('lowpass', 110, 0.6);
+        this.eerieGain = mkLoop('bandpass', 220, 12);
       } catch {
         this.ctx = null;
         return;
@@ -120,6 +125,87 @@ export class Sound {
     const clamp = (v: number) => Math.max(0, Math.min(1, v));
     this.windGain.gain.setTargetAtTime(clamp(wind) * 0.5, t, 0.5);
     this.waterGain.gain.setTargetAtTime(clamp(water) * 0.4, t, 0.3);
+  }
+
+  /** 声景音量(0..1):地狱隆隆 / 腐化呜咽,慢速过渡 */
+  setScape(rumble: number, eerie: number): void {
+    if (!this.ready || !this.rumbleGain || !this.eerieGain) return;
+    const t = this.ctx!.currentTime;
+    const clamp = (v: number) => Math.max(0, Math.min(1, v));
+    this.rumbleGain.gain.setTargetAtTime(clamp(rumble) * 0.65, t, 0.8);
+    this.eerieGain.gain.setTargetAtTime(clamp(eerie) * 0.22, t, 1.2);
+  }
+
+  /** 鸟鸣:两三声上扬颤音(森林/丛林白昼点缀) */
+  chirp(vol = 1): void {
+    if (!this.ready) return;
+    const ctx = this.ctx!;
+    const n = 2 + ((Math.random() * 3) | 0);
+    const f0 = 2300 + Math.random() * 1300;
+    let t = ctx.currentTime + Math.random() * 0.1;
+    for (let i = 0; i < n; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      const f = f0 * (0.92 + Math.random() * 0.16);
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * (1.15 + Math.random() * 0.2), t + 0.045);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.9, t + 0.09);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.09 * vol, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      osc.connect(g).connect(this.master!);
+      osc.start(t);
+      osc.stop(t + 0.12);
+      t += 0.11 + Math.random() * 0.08;
+    }
+  }
+
+  /** 蟋蟀:一串短促高频脉冲(地表夜晚点缀) */
+  cricket(): void {
+    if (!this.ready) return;
+    const ctx = this.ctx!;
+    const f = 4000 + Math.random() * 600;
+    let t = ctx.currentTime + Math.random() * 0.05;
+    const n = 3 + ((Math.random() * 3) | 0);
+    for (let i = 0; i < n; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = f / 2;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f;
+      bp.Q.value = 8;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.05, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+      osc.connect(bp).connect(g).connect(this.master!);
+      osc.start(t);
+      osc.stop(t + 0.05);
+      t += 0.045;
+    }
+  }
+
+  /** 滴水:高音水珠 + 微弱回声(地下/洞穴点缀) */
+  drip(): void {
+    if (!this.ready) return;
+    const ctx = this.ctx!;
+    const f0 = 1100 + Math.random() * 700;
+    const ping = (at: number, vol: number) => {
+      const t = ctx.currentTime + at;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(f0 * 0.45, t + 0.07);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.11 * vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      osc.connect(g).connect(this.master!);
+      osc.start(t);
+      osc.stop(t + 0.11);
+    };
+    ping(0, 1);
+    ping(0.16 + Math.random() * 0.1, 0.35); // 洞里的回声
   }
 
   private get ready(): boolean {

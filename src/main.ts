@@ -555,7 +555,10 @@ input.onLockChange = (locked) => {
     hud.setInventoryVisible(false);
   }
   hud.setOverlayVisible(!locked && !inventoryOpen, started);
-  if (!locked) sound.setAmbience(0, 0); // 暂停时环境声淡出
+  if (!locked) {
+    sound.setAmbience(0, 0); // 暂停时环境声淡出
+    sound.setScape(0, 0);
+  }
   leftHeld = false;
   leftDownAt = 0;
   mining = null;
@@ -1019,6 +1022,8 @@ function frame(now: number): void {
   }
   (scene.background as THREE.Color).copy(fog.color);
   sky.setVisible(!wasUnderwater && py >= LAYER_UNDERGROUND_TOP);
+  // 雾外区块不提交渲染(洞穴/地狱雾距短,省掉大半 draw call)
+  world.applyDrawDistance(player.pos.x, player.pos.z, fog.far);
 
   // 准星目标:高亮 + 挖掘 + 连续放置
   const hit = input.locked
@@ -1086,6 +1091,26 @@ function frame(now: number): void {
       );
       const waterAmb = wasUnderwater ? 0.3 : Math.max(0, 1 - wd / 20);
       sound.setAmbience(wind, waterAmb);
+
+      // 声景:地狱低频隆隆(慢起伏),地表腐化之地呜咽
+      const py2 = player.pos.y;
+      const onSurface = py2 >= LAYER_UNDERGROUND_TOP;
+      const biomeNow = onSurface ? world.gen.biomeAt(player.pos.x, player.pos.z) : 'forest';
+      const rumble = py2 < LAYER_HELL_TOP + 3 ? 0.42 + 0.16 * Math.sin(now * 0.0006) : 0;
+      const eerie =
+        onSurface && biomeNow === 'corruption' ? 0.75 + 0.25 * Math.sin(now * 0.00037) : 0;
+      sound.setScape(rumble, eerie);
+      // 点缀音:白昼林间鸟鸣 / 夜晚蟋蟀 / 地下滴水
+      if (!wasUnderwater) {
+        const r = Math.random();
+        if (onSurface && dn.brightness > 0.55 && biomeNow !== 'corruption') {
+          if (r < (biomeNow === 'jungle' ? 0.11 : 0.045)) sound.chirp();
+        } else if (onSurface && dn.starAlpha > 0.5) {
+          if (r < 0.08) sound.cricket();
+        } else if (py2 < LAYER_UNDERGROUND_TOP && py2 >= LAYER_HELL_TOP) {
+          if (r < (py2 < LAYER_CAVERN_TOP ? 0.06 : 0.035)) sound.drip();
+        }
+      }
     }
 
     // 稳定瀑布的持续溅水
