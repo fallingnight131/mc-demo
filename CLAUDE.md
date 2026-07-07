@@ -113,6 +113,7 @@ Performance notes for a finite-but-tall world:
 * Read and update `progress.md` in every loop.
 * Commit git in every loop with meaningful messages.
 * When changing world generation, always regenerate with a fixed test seed and visually sanity-check the result (screenshot or fly-through if possible).
+* When adding or modifying a model, take a snapshot of the new model and save it in the `shots/` folder. Verify that the model looks good and is suitable; if it is substandard or does not meet requirements, make the necessary adjustments to ensure the snapshot aligns with the specifications.
 
 ---
 

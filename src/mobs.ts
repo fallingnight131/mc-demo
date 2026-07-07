@@ -9,6 +9,7 @@ const SPAWN_FAR = 42;
 const DESPAWN_DIST = 90;
 const GRAVITY = 24;
 const HOP_SPEED = 7.2; // 遇 1 格台阶的小跳
+const ARM_HANG = 0.22; // 泰拉僵尸双臂下垂微前伸的基准角(非 MC 的水平前伸)
 
 export type MobKind = 'zombie';
 
@@ -225,36 +226,48 @@ export class Mobs {
     mats: THREE.MeshBasicMaterial[];
   } {
     const skin = this.skins[kind];
-    const bodyMat = new THREE.MeshBasicMaterial({ map: skin.body });
-    const headMat = new THREE.MeshBasicMaterial({ map: skin.head });
-    const faceMat = new THREE.MeshBasicMaterial({ map: skin.face });
+    const mat = (tex: THREE.Texture) => new THREE.MeshBasicMaterial({ map: tex });
+    const bodyMat = mat(skin.body);
+    const headMat = mat(skin.head);
+    const faceMat = mat(skin.face);
+    const hairMat = mat(skin.hair);
+    const armMat = mat(skin.arm);
+    const pantsMat = mat(skin.pants);
     const g = new THREE.Group();
     const legs: THREE.Mesh[] = [];
     const arms: THREE.Mesh[] = [];
-    let legSign: number[] = [];
-    const headMats = [headMat, headMat, headMat, headMat, headMat, faceMat];
+    // 头顶(+y)与后脑(+z)整片乱发,脸在 -z,两侧与底面为皮肤
+    const headMats = [headMat, headMat, hairMat, headMat, hairMat, faceMat];
 
-    // 人形僵尸:头 + 衣身 + 前伸双臂 + 双腿
+    // 泰拉式僵尸:乱发脑袋 + 破衫躯干 + 下垂裸臂(蹒跚摆动)+ 破裤双腿,整体微前倾佝偻
     void kind;
-    const head = new THREE.Mesh(this.box(0.42, 0.42, 0.42), headMats);
-    head.position.set(0, 1.56, 0);
+    const head = new THREE.Mesh(this.box(0.44, 0.44, 0.44), headMats);
+    head.position.set(0, 1.55, 0);
+    head.rotation.x = 0.12; // 低头前探
     g.add(head);
     const body = new THREE.Mesh(this.box(0.42, 0.62, 0.22), bodyMat);
     body.position.y = 1.02;
+    body.rotation.x = 0.07; // 佝偻
     g.add(body);
     for (const side of [-1, 1]) {
-      const arm = new THREE.Mesh(this.box(0.17, 0.62, 0.17, true), bodyMat);
-      arm.position.set(side * 0.3, 1.32, 0);
-      arm.rotation.x = -1.45; // 经典僵尸前伸
+      const arm = new THREE.Mesh(this.box(0.16, 0.64, 0.16, true), armMat);
+      arm.position.set(side * 0.31, 1.34, 0);
+      arm.rotation.set(ARM_HANG, 0, side * -0.08); // 下垂微前伸、略外张
       arms.push(arm);
       g.add(arm);
-      const leg = new THREE.Mesh(this.box(0.18, 0.7, 0.18, true), headMat);
+      const leg = new THREE.Mesh(this.box(0.18, 0.7, 0.18, true), pantsMat);
       leg.position.set(side * 0.11, 0.7, 0);
       legs.push(leg);
       g.add(leg);
     }
-    legSign = [1, -1];
-    return { group: g, legs, legSign, arms, mats: [bodyMat, headMat, faceMat] };
+    const legSign = [1, -1];
+    return {
+      group: g,
+      legs,
+      legSign,
+      arms,
+      mats: [bodyMat, headMat, faceMat, hairMat, armMat, pantsMat],
+    };
   }
 
   spawnAt(x: number, y: number, z: number, kind: MobKind = 'zombie'): void {
@@ -392,9 +405,10 @@ export class Mobs {
       for (let l = 0; l < m.legs.length; l++) {
         m.legs[l].rotation.x = swing * m.legSign[l];
       }
-      for (let a2 = 0; a2 < m.arms.length; a2++) {
-        m.arms[a2].rotation.x = -1.45 + Math.sin(m.phase + a2 * Math.PI) * 0.12;
-      }
+      // 下垂裸臂随蹒跚步伐前后摆(与同侧腿反相),始终垂着而非 MC 式水平前伸
+      const armSwing = Math.sin(m.phase) * Math.min(1, hspeed / 2) * 0.7;
+      m.arms[0].rotation.x = ARM_HANG - armSwing;
+      m.arms[1].rotation.x = ARM_HANG + armSwing;
       let dh = b.heading - m.displayHeading;
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
       m.displayHeading += dh * Math.min(1, dt * 8);

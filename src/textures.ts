@@ -962,14 +962,20 @@ export function buildSunTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/** 生物皮肤:身体 / 头 / 脸三张贴图 */
+/** 生物皮肤:泰拉瑞亚风格僵尸 —— 身体/头/脸/头发/裸臂/裤腿六张贴图 */
 export interface MobSkin {
   body: THREE.CanvasTexture;
   head: THREE.CanvasTexture;
   face: THREE.CanvasTexture;
+  hair: THREE.CanvasTexture;
+  arm: THREE.CanvasTexture;
+  pants: THREE.CanvasTexture;
 }
 
-/** 僵尸的程序化皮肤(盒子模型用) */
+/**
+ * 泰拉瑞亚风格僵尸的程序化皮肤:病态灰绿皮、深褐乱发、褪色破蓝衫(参差破摆
+ * 露出躯干)、破褐裤、裸臂带暗红伤口;脸为凹陷空眼窝 + 苍白呆瞳 + 咧嘴呻吟。
+ */
 export function buildMobTextures(): { zombie: MobSkin } {
   const make = (paint: Painter, seed: number): THREE.CanvasTexture => {
     const canvas = document.createElement('canvas');
@@ -987,30 +993,132 @@ export function buildMobTextures(): { zombie: MobSkin } {
     return tex;
   };
 
-  // 僵尸:腐绿皮肤 + 深青破衣 + 黑眼直视
-  const zombieSkin: Painter = (img, rng) => {
-    noiseFill(img, rng, [96, 146, 78], 9);
+  // 调色板:病绿肤 / 深绿腐斑 / 深褐乱发 / 褪蓝破衫 / 暗蓝布影 / 破褐裤 / 暗红伤口
+  const SKIN: [number, number, number] = [118, 138, 96];
+  const SKIN_DK: [number, number, number] = [90, 110, 72];
+  const HAIR: [number, number, number] = [46, 40, 34];
+  const SHIRT: [number, number, number] = [84, 96, 120];
+  const SHIRT_DK: [number, number, number] = [56, 66, 92];
+  const PANTS: [number, number, number] = [74, 60, 46];
+  const WOUND: [number, number, number] = [104, 46, 44];
+
+  const rect = (
+    img: ImageData,
+    x0: number,
+    y0: number,
+    w: number,
+    h: number,
+    c: [number, number, number],
+  ): void => {
+    for (let y = y0; y < y0 + h; y++) {
+      for (let x = x0; x < x0 + w; x++) {
+        if (x < 0 || x >= TS || y < 0 || y >= TS) continue;
+        px(img, x, y, c[0], c[1], c[2]);
+      }
+    }
   };
-  const zombieHead = make(zombieSkin, 558001);
-  const zombieBody = make((img, rng) => {
-    noiseFill(img, rng, [0, 112, 118], 10);
-    for (let i = 0; i < 8; i++) {
-      px(img, (rng() * TS) | 0, (rng() * TS) | 0, 60, 84, 64); // 破洞
+
+  const skinBase: Painter = (img, rng) => {
+    noiseFill(img, rng, SKIN, 8);
+    for (let i = 0; i < 6; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, SKIN_DK[0], SKIN_DK[1], SKIN_DK[2]); // 腐斑
+    }
+  };
+
+  // 头两侧/底面:病绿皮 + 顶部参差乱发帘
+  const head = make((img, rng) => {
+    skinBase(img, rng);
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < TS; x++) {
+        if (rng() < 0.82 - y * 0.16) {
+          const j = (rng() * 12 - 6) | 0;
+          px(img, x, y, clamp255(HAIR[0] + j), clamp255(HAIR[1] + j), clamp255(HAIR[2] + j));
+        }
+      }
+    }
+  }, 558001);
+
+  // 头顶 / 后脑:整片深褐乱发 + 挑染发丝
+  const hair = make((img, rng) => {
+    noiseFill(img, rng, HAIR, 8);
+    for (let i = 0; i < 26; i++) {
+      px(img, (rng() * TS) | 0, (rng() * TS) | 0, HAIR[0] + 22, HAIR[1] + 18, HAIR[2] + 16);
+    }
+  }, 558005);
+
+  // 脸:发帘 + 眉骨阴影 + 凹陷空眼窝 + 苍白呆瞳 + 鼻影 + 咧嘴残牙 + 瘦颊
+  const face = make((img, rng) => {
+    skinBase(img, rng);
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < TS; x++) {
+        if (rng() < 0.7 - y * 0.2) px(img, x, y, HAIR[0], HAIR[1], HAIR[2]);
+      }
+    }
+    rect(img, 2, 5, 5, 1, SKIN_DK);
+    rect(img, 9, 5, 5, 1, SKIN_DK);
+    rect(img, 3, 6, 3, 3, [22, 26, 20]); // 左眼窝
+    rect(img, 10, 6, 3, 3, [22, 26, 20]); // 右眼窝
+    px(img, 4, 7, 178, 188, 164); // 苍白呆瞳
+    px(img, 11, 7, 178, 188, 164);
+    px(img, 8, 9, SKIN_DK[0], SKIN_DK[1], SKIN_DK[2]); // 鼻影
+    px(img, 8, 10, SKIN_DK[0], SKIN_DK[1], SKIN_DK[2]);
+    rect(img, 5, 11, 6, 3, [28, 22, 20]); // 咧嘴呻吟
+    px(img, 6, 11, 176, 176, 150); // 残牙
+    px(img, 8, 11, 176, 176, 150);
+    px(img, 9, 11, 176, 176, 150);
+    rect(img, 2, 9, 1, 3, SKIN_DK); // 瘦削脸颊
+    rect(img, 13, 9, 1, 3, SKIN_DK);
+  }, 558003);
+
+  // 破衫身:褪色蓝布 + 破洞露肤 + 领口 + 参差破摆(下摆露出躯干)
+  const body = make((img, rng) => {
+    noiseFill(img, rng, SHIRT, 10);
+    for (let i = 0; i < 7; i++) {
+      const hx = (rng() * TS) | 0;
+      const hy = 2 + ((rng() * 9) | 0);
+      px(img, hx, hy, SKIN[0], SKIN[1], SKIN[2]);
+      if (rng() < 0.5) px(img, (hx + 1) % TS, hy, SKIN_DK[0], SKIN_DK[1], SKIN_DK[2]);
+    }
+    rect(img, 5, 0, 6, 1, SHIRT_DK); // 领口
+    for (let x = 0; x < TS; x++) {
+      const hem = 11 + ((rng() * 4) | 0); // 参差破摆自 11..14 起
+      for (let y = hem; y < TS; y++) {
+        if (rng() < 0.5) px(img, x, y, SKIN[0], SKIN[1], SKIN[2]);
+        else px(img, x, y, SHIRT_DK[0], SHIRT_DK[1], SHIRT_DK[2]);
+      }
     }
   }, 558002);
-  const zombieFace = make((img, rng) => {
-    zombieSkin(img, rng);
-    for (const y of [7, 8]) {
-      px(img, 3, y, 22, 26, 20);
-      px(img, 4, y, 22, 26, 20);
-      px(img, 11, y, 22, 26, 20);
-      px(img, 12, y, 22, 26, 20);
+
+  // 裸臂:病绿皮 + 残破袖口 + 暗红伤口
+  const arm = make((img, rng) => {
+    skinBase(img, rng);
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < TS; x++) {
+        if (rng() < 0.85 - y * 0.28) px(img, x, y, SHIRT[0], SHIRT[1], SHIRT[2]);
+      }
     }
-    // 暗色嘴缝
-    for (let x = 6; x <= 9; x++) px(img, x, 12, 44, 62, 40);
-  }, 558003);
+    rect(img, 6, 8, 3, 2, WOUND); // 暗红伤口
+    px(img, 6, 7, WOUND[0] - 22, WOUND[1] - 14, WOUND[2] - 14);
+    px(img, 8, 10, WOUND[0] - 22, WOUND[1] - 14, WOUND[2] - 14);
+  }, 558006);
+
+  // 破裤腿:褪褐布 + 腰带 + 破洞露肤 + 参差裤脚
+  const pants = make((img, rng) => {
+    noiseFill(img, rng, PANTS, 8);
+    for (let i = 0; i < 4; i++) {
+      px(img, (rng() * TS) | 0, 3 + ((rng() * 8) | 0), SKIN[0], SKIN[1], SKIN[2]);
+    }
+    rect(img, 0, 0, TS, 1, [52, 42, 32]); // 腰带
+    for (let x = 0; x < TS; x++) {
+      const hem = 12 + ((rng() * 3) | 0);
+      for (let y = hem; y < TS; y++) {
+        if (rng() < 0.4) px(img, x, y, SKIN_DK[0], SKIN_DK[1], SKIN_DK[2]);
+      }
+    }
+  }, 558007);
+
   return {
-    zombie: { body: zombieBody, head: zombieHead, face: zombieFace },
+    zombie: { body, head, face, hair, arm, pants },
   };
 }
 
