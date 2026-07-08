@@ -1845,7 +1845,8 @@ const hellInfo = await page.evaluate(() => {
     for (let dz = -38; dz <= 38; dz += 2) {
       const x = sx + dx;
       const z = sz + dz;
-      for (let y = 10; y < 19; y++) {
+      for (let y = 8; y < 22; y++) {
+        // 灰烬岸落脚点(脚下实体、上方两格空气)
         if (
           g.world.getBlock(x, y, z) === 0 &&
           g.world.getBlock(x, y + 1, z) === 0 &&
@@ -1858,7 +1859,8 @@ const hellInfo = await page.evaluate(() => {
           let lava = 0;
           for (let ax = -20; ax <= 20; ax++) {
             for (let az = -20; az <= 20; az++) {
-              for (let ay = 2; ay <= 9; ay++) {
+              for (let ay = 2; ay <= 16; ay++) {
+                // 岩浆液面按区域浮动(至多 ~15)
                 if (g.world.getBlock(x + ax, ay, z + az) === 35) lava++;
               }
             }
@@ -1889,13 +1891,19 @@ if (hellInfo) {
     g.setHp(10);
     const x = Math.floor(g.player.pos.x);
     const z = Math.floor(g.player.pos.z);
+    // 岩浆液面按区域浮动:在附近扫描任意高度的岩浆面(其上是空气),跳进去
     for (let r = 1; r < 30; r++) {
       for (let dx = -r; dx <= r; dx++) {
         for (let dz = -r; dz <= r; dz++) {
-          if (g.world.getBlock(x + dx, 8, z + dz) === 35) {
-            g.player.pos.set(x + dx + 0.5, 8.2, z + dz + 0.5);
-            g.player.vel.set(0, 0, 0);
-            return g.hp();
+          for (let ly = 3; ly <= 15; ly++) {
+            if (
+              g.world.getBlock(x + dx, ly, z + dz) === 35 &&
+              g.world.getBlock(x + dx, ly + 1, z + dz) === 0
+            ) {
+              g.player.pos.set(x + dx + 0.5, ly + 0.2, z + dz + 0.5);
+              g.player.vel.set(0, 0, 0);
+              return g.hp();
+            }
           }
         }
       }

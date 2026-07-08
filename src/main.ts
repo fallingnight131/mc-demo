@@ -5,7 +5,6 @@ import { baseBlock, Block, BLOCK_DEFS, isWater, PLACEABLE, pumpkinVariant } from
 import {
   CHUNK_SIZE,
   EYE_HEIGHT,
-  LAVA_LEVEL,
   LAYER_CAVERN_TOP,
   LAYER_HELL_TOP,
   LAYER_SKY_BOTTOM,
@@ -1323,11 +1322,12 @@ function frame(now: number): void {
         for (let i = 0; i < 5; i++) {
           const ex = Math.floor(player.pos.x + (Math.random() - 0.5) * 32);
           const ez = Math.floor(player.pos.z + (Math.random() - 0.5) * 32);
+          const ly = world.gen.hellLava(ex, ez); // 本区域岩浆液面(高低不一)
           if (
-            world.getBlock(ex, LAVA_LEVEL, ez) === Block.Lava &&
-            world.getBlock(ex, LAVA_LEVEL + 1, ez) === Block.Air
+            world.getBlock(ex, ly, ez) === Block.Lava &&
+            world.getBlock(ex, ly + 1, ez) === Block.Air
           ) {
-            particles.ember(ex, LAVA_LEVEL + 1, ez);
+            particles.ember(ex, ly + 1, ez);
           }
         }
       }

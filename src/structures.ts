@@ -1,7 +1,7 @@
 // 地标结构(Terraria 3D · Phase 4):世界树 / 天空岛 / 地牢 / 地狱遗迹。
 // 全部由种子确定性选址,按世界坐标盖章到区块 —— 跨区块一致,重复生成幂等。
 import { Block } from './blocks';
-import { LAVA_LEVEL, LAYER_HELL_TOP, LAYER_SKY_BOTTOM, SEA_LEVEL, SNOW_LEVEL } from './config';
+import { LAYER_HELL_TOP, LAYER_SKY_BOTTOM, SEA_LEVEL, SNOW_LEVEL } from './config';
 import { hash2, hash3 } from './noise';
 
 /** 盖章写入器:世界坐标,越出当前区块的写入被调用方丢弃 */
@@ -12,6 +12,7 @@ export interface TerrainInfo {
   seed: number;
   heightAt(x: number, z: number): number;
   hellFloor(x: number, z: number): number;
+  hellLava(x: number, z: number): number;
   biomeAt(x: number, z: number): 'forest' | 'jungle' | 'corruption' | 'crimson';
 }
 
@@ -101,7 +102,7 @@ export class Structures {
     });
     for (const f of this.hellForts) {
       this.boxes.push({
-        box: { x0: f.x - 5, x1: f.x + 5, z0: f.z - 5, z1: f.z + 5, y0: 8, y1: 18 },
+        box: { x0: f.x - 5, x1: f.x + 5, z0: f.z - 5, z1: f.z + 5, y0: 1, y1: 34 },
         loot: 'hell',
         build: (set) => this.buildHellFort(set, f.x, f.z),
       });
@@ -193,10 +194,10 @@ export class Structures {
             if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
             const x = cx + dx;
             const z = cz + dz;
-            // 中心在灰烬岸上,门前(+x)可落脚;边角允许探进岩浆(残垣戏剧感)
+            // 中心在灰烬岸上(高于本区域岩浆液面),门前(+x)可落脚
             const ok =
-              this.t.hellFloor(x, z) >= LAVA_LEVEL + 1 &&
-              this.t.hellFloor(x + 5, z) >= LAVA_LEVEL;
+              this.t.hellFloor(x, z) >= this.t.hellLava(x, z) + 1 &&
+              this.t.hellFloor(x + 5, z) >= this.t.hellLava(x + 5, z);
             if (ok) {
               this.hellForts.push({ x, z });
               break outer;
@@ -656,44 +657,60 @@ export class Structures {
     }
   }
 
-  /** 地狱遗迹:灰烬岸上的黑曜石断壁残垣,地狱石棱角,内藏宝箱 */
+  /** 地狱遗迹:灰烬岸上的两层黑曜石楼房,四角地狱石光柱,箭窗,层层藏宝 */
   private buildHellFort(set: SetFn, fx: number, fz: number): void {
-    const base = LAVA_LEVEL + 2;
-    // 地台 + 边缘裙脚
+    const base = this.t.hellFloor(fx, fz) + 1; // 坐落在本地灰烬岸上(高于岩浆)
+    const O = Block.Obsidian;
+    const mid = base + 6; // 层间楼板
+    const roof = base + 12; // 屋顶
+    // 地台 + 裙脚
     for (let dx = -4; dx <= 4; dx++) {
       for (let dz = -4; dz <= 4; dz++) {
-        set(fx + dx, base, fz + dz, Block.Obsidian);
-        if (Math.abs(dx) === 4 || Math.abs(dz) === 4) {
-          set(fx + dx, base - 1, fz + dz, Block.Obsidian);
-        }
+        set(fx + dx, base, fz + dz, O);
+        if (Math.abs(dx) === 4 || Math.abs(dz) === 4) set(fx + dx, base - 1, fz + dz, O);
       }
     }
-    // 内部清空
-    for (let y = base + 1; y <= base + 5; y++) {
-      for (let dx = -3; dx <= 3; dx++) {
-        for (let dz = -3; dz <= 3; dz++) set(fx + dx, y, fz + dz, Block.Air);
-      }
-    }
-    // 断墙:越高越残破;四角地狱石(自发光)
-    for (let y = base + 1; y <= base + 6; y++) {
+    // 两层楼:墙 + 层板 + 屋顶,四角地狱石光柱,箭窗,越高越残破
+    for (let y = base + 1; y <= roof; y++) {
       for (let dx = -4; dx <= 4; dx++) {
         for (let dz = -4; dz <= 4; dz++) {
-          if (Math.abs(dx) !== 4 && Math.abs(dz) !== 4) continue;
           const corner = Math.abs(dx) === 4 && Math.abs(dz) === 4;
-          if (!corner && hash3(fx + dx, y, fz + dz, this.seed ^ 0xf0f2) < 0.06 + (y - base - 1) * 0.1) continue;
-          if (corner && y > base + 4) continue;
-          set(fx + dx, y, fz + dz, corner ? Block.Hellstone : Block.Obsidian);
+          const edge = Math.abs(dx) === 4 || Math.abs(dz) === 4;
+          if (corner) {
+            // 四角地狱石光柱(自发光),顶端残破
+            if (y < roof || hash3(fx + dx, y, fz + dz, this.seed ^ 0xf0f3) < 0.6) {
+              set(fx + dx, y, fz + dz, Block.Hellstone);
+            }
+          } else if (edge) {
+            // 箭窗(两层各一圈中点),其余越高越残破
+            if ((y === base + 3 || y === base + 9) && (dx === 0 || dz === 0)) {
+              set(fx + dx, y, fz + dz, Block.Air);
+            } else {
+              const ruin = hash3(fx + dx, y, fz + dz, this.seed ^ 0xf0f2) < (y - base) * 0.028;
+              set(fx + dx, y, fz + dz, ruin ? Block.Air : O);
+            }
+          } else if (y === mid || y === roof) {
+            set(fx + dx, y, fz + dz, O); // 层板 / 屋顶
+          } else {
+            set(fx + dx, y, fz + dz, Block.Air); // 室内清空
+          }
         }
       }
     }
-    // 门洞
+    // 一层门洞(+x)
     for (let y = base + 1; y <= base + 3; y++) {
       set(fx + 4, y, fz, Block.Air);
       set(fx + 4, y, fz - 1, Block.Air);
     }
-    // 宝箱与地灯
+    // 上楼开口(层板留洞)
+    set(fx + 2, mid, fz + 2, Block.Air);
+    set(fx + 2, mid, fz + 1, Block.Air);
+    // 层层藏宝:一层两箱、二层两箱 + 双层地灯
     set(fx - 2, base + 1, fz, Block.Chest);
     set(fx + 2, base + 1, fz - 2, Block.Chest);
+    set(fx - 2, mid + 1, fz - 1, Block.Chest);
+    set(fx + 1, mid + 1, fz + 2, Block.Chest);
     set(fx, base, fz, Block.Glowstone);
+    set(fx, mid, fz, Block.Glowstone);
   }
 }

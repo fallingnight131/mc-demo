@@ -6,11 +6,11 @@ export const SEA_LEVEL = 128;
 export const SNOW_LEVEL = 156;
 
 // 垂直分层边界(自下而上:地狱 → 洞穴层 → 地下层 → 地表 → 天空)
-export const LAYER_HELL_TOP = 26; // y < 26 地狱
-export const LAYER_CAVERN_TOP = 100; // 26..100 洞穴层(最大层)
+export const LAYER_HELL_TOP = 46; // y < 46 地狱(加高:更高的地狱空间)
+export const LAYER_CAVERN_TOP = 100; // 46..100 洞穴层(最大层)
 export const LAYER_UNDERGROUND_TOP = 124; // 100..124 地下层
 export const LAYER_SKY_BOTTOM = 182; // y ≥ 182 天空层
-/** 地狱岩浆海液面 */
+/** 地狱岩浆海基准液面(各区域按地形起伏在此上下浮动) */
 export const LAVA_LEVEL = 9;
 
 // --- Terraria 3D:有限世界结构(Phase 1) ---

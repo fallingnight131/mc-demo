@@ -51,20 +51,23 @@ describe('Terraria 3D 垂直分层', () => {
     }
   });
 
-  it('地狱:有岩浆海、灰烬地面与地狱石矿,顶板隔离洞穴层', () => {
+  it('地狱加高:各区域岩浆液面高低不一,灰烬地面与地狱石矿,顶板隔离洞穴层', () => {
     let lava = 0;
     let ash = 0;
     let hellstone = 0;
     let roof = 0;
     let roofTot = 0;
+    const lavaTops = new Set<number>();
     for (const { data } of chunks) {
       for (let lz = 0; lz < CS; lz++) {
         for (let lx = 0; lx < CS; lx++) {
+          let top = -1;
           for (let y = 1; y < LAYER_HELL_TOP; y++) {
             const id = data[idx(lx, y, lz)];
             if (id === Block.Lava) {
               lava++;
-              expect(y).toBeLessThanOrEqual(LAVA_LEVEL); // 岩浆只在液面下
+              top = y;
+              expect(y).toBeLessThanOrEqual(LAVA_LEVEL + 7); // 岩浆液面按区域上下浮动
             }
             if (id === Block.Ash) ash++;
             if (id === Block.Hellstone) hellstone++;
@@ -73,12 +76,14 @@ describe('Terraria 3D 垂直分层', () => {
               if (id !== Block.Air && id !== Block.Lava) roof++;
             }
           }
+          if (top >= 0) lavaTops.add(top);
         }
       }
     }
-    expect(lava).toBeGreaterThan(300);
-    expect(ash).toBeGreaterThan(100);
+    expect(lava).toBeGreaterThan(200);
+    expect(ash).toBeGreaterThan(80);
     expect(hellstone).toBeGreaterThan(20);
+    expect(lavaTops.size).toBeGreaterThan(2); // 液面高低不一(地形错落 → 岩浆池有高差)
     expect(roof / roofTot).toBeGreaterThan(0.9); // 顶板基本完整
   });
 

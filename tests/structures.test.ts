@@ -162,15 +162,20 @@ describe('Terraria 3D 地标', () => {
     expect(S.lootAt(x - 8, g - 10, z - 8)).toBe('dungeon');
   });
 
-  it('地狱遗迹:灰烬岸上的黑曜石残垣,地狱石棱角,藏宝与地灯', () => {
+  it('地狱遗迹:灰烬岸上的两层黑曜石楼房,地狱石光柱,层层藏宝与地灯', () => {
     expect(S.hellForts.length).toBeGreaterThanOrEqual(2);
     for (const f of S.hellForts) {
-      const obsidian = countIn(at, f.x - 5, f.x + 5, 8, 18, f.z - 5, f.z + 5, Block.Obsidian);
-      expect(obsidian).toBeGreaterThan(60);
-      const chests = countIn(at, f.x - 5, f.x + 5, 8, 18, f.z - 5, f.z + 5, Block.Chest);
-      expect(chests).toBe(2);
-      expect(at(f.x, LAVA_LEVEL + 2, f.z)).toBe(Block.Glowstone);
-      expect(S.lootAt(f.x - 2, LAVA_LEVEL + 3, f.z)).toBe('hell');
+      const base = gen.hellFloor(f.x, f.z) + 1; // 楼房坐落在本地灰烬岸上
+      const yl = base - 1;
+      const yh = base + 13;
+      const obsidian = countIn(at, f.x - 5, f.x + 5, yl, yh, f.z - 5, f.z + 5, Block.Obsidian);
+      expect(obsidian).toBeGreaterThan(80); // 两层楼比旧残垣更多黑曜石
+      const chests = countIn(at, f.x - 5, f.x + 5, yl, yh, f.z - 5, f.z + 5, Block.Chest);
+      expect(chests).toBe(4); // 层层藏宝:两层各两箱
+      const hellstone = countIn(at, f.x - 5, f.x + 5, yl, yh, f.z - 5, f.z + 5, Block.Hellstone);
+      expect(hellstone).toBeGreaterThan(20); // 四角地狱石光柱
+      expect(at(f.x, base, f.z)).toBe(Block.Glowstone);
+      expect(S.lootAt(f.x - 2, base + 1, f.z)).toBe('hell');
     }
   });
 

@@ -282,13 +282,22 @@ export class Generator {
     return false;
   }
 
-  /** 地狱:地面/穹顶高度(带起伏,部分灰烬岸露出岩浆海) */
+  /** 地狱地面:起伏更大(灰烬高地与低洼岩浆盆地交错) */
   hellFloor(x: number, z: number): number {
-    return Math.round(7 + this.hellN.fbm(x * 0.03, z * 0.03, 2) * 5.5);
+    return Math.round(10 + this.hellN.fbm(x * 0.03, z * 0.03, 3) * 9);
   }
 
+  /** 地狱穹顶:抬高,拉出高大的地狱空间(加高地狱) */
   hellCeil(x: number, z: number): number {
-    return Math.round(20 + this.hellN.fbm(x * 0.026 + 53.7, z * 0.026 - 21.3, 2) * 3.2);
+    return Math.round(40 + this.hellN.fbm(x * 0.026 + 53.7, z * 0.026 - 21.3, 2) * 3);
+  }
+
+  /**
+   * 地狱岩浆液面:随大区域起伏(地形错落 → 各处岩浆池液面有高低差),
+   * 灰烬高地露出液面成岸,低洼处积成深浅不一的岩浆池。
+   */
+  hellLava(x: number, z: number): number {
+    return Math.round(LAVA_LEVEL + this.hellN.fbm(x * 0.012 - 91.3, z * 0.012 + 44.1, 2) * 6);
   }
 
   /**
@@ -362,6 +371,7 @@ export class Generator {
         const chasm = this.chasmAt(wx, wz);
         const hf = this.hellFloor(wx, wz);
         const hc = this.hellCeil(wx, wz);
+        const hlava = this.hellLava(wx, wz);
         for (let y = 0; y <= h; y++) {
           let id: number;
           if (y === 0) id = Block.Bedrock;
@@ -371,7 +381,7 @@ export class Generator {
               const r = hash3(wx, y, wz, this.seed ^ 0x4e11);
               id = y >= hf - 1 ? Block.Ash : r < 0.06 ? Block.Hellstone : Block.Stone;
             } else if (y < hc) {
-              id = y <= LAVA_LEVEL ? Block.Lava : Block.Air;
+              id = y <= hlava ? Block.Lava : Block.Air; // 岩浆填到本区域液面(高低不一)
             } else {
               const r = hash3(wx, y, wz, this.seed ^ 0x4e11);
               id = r < 0.05 ? Block.Hellstone : Block.Stone;
