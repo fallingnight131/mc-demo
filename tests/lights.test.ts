@@ -20,19 +20,21 @@ describe('块光照', () => {
     h0 = world.gen.heightAt(x0, z0);
   });
 
-  it('萤石光照逐格衰减,挖掉后归零', () => {
-    world.setBlock(x0, h0 + 2, z0, Block.Glowstone);
-    expect(world.lights.lightAt(x0, h0 + 2, z0)).toBe(15);
-    expect(world.lights.lightAt(x0 + 1, h0 + 2, z0)).toBe(14);
-    expect(world.lights.lightAt(x0 + 3, h0 + 2, z0)).toBe(12);
-    // 曼哈顿距离 2 的对角
-    expect(world.lights.lightAt(x0 + 1, h0 + 3, z0)).toBe(13);
-    // 15 格外无光
-    expect(world.lights.lightAt(x0 + 15, h0 + 2, z0)).toBe(0);
-    world.setBlock(x0, h0 + 2, z0, Block.Air);
-    expect(world.lights.lightAt(x0, h0 + 2, z0)).toBe(0);
-    expect(world.lights.lightAt(x0 + 1, h0 + 2, z0)).toBe(0);
-    expect(world.lights.sourceCount).toBe(0);
+  it('萤石光照逐格衰减,挖掉后归零(纯光照逻辑,不受世界生成光源干扰)', () => {
+    // 用裸 Lights 实例在开阔全透明空间测传播,隔离于地图上的天然光源
+    const lights = new Lights(() => false);
+    lights.addSource(0, 0, 0, 15);
+    lights.recompute();
+    expect(lights.lightAt(0, 0, 0)).toBe(15);
+    expect(lights.lightAt(1, 0, 0)).toBe(14);
+    expect(lights.lightAt(3, 0, 0)).toBe(12);
+    expect(lights.lightAt(1, 1, 0)).toBe(13); // 曼哈顿距离 2
+    expect(lights.lightAt(15, 0, 0)).toBe(0); // 15 格外无光
+    lights.removeSource(0, 0, 0);
+    lights.recompute();
+    expect(lights.lightAt(0, 0, 0)).toBe(0);
+    expect(lights.lightAt(1, 0, 0)).toBe(0);
+    expect(lights.sourceCount).toBe(0);
   });
 
   it('火把光照 14,且被不透明墙遮挡(绕行衰减更多)', () => {

@@ -58,7 +58,7 @@ export class Structures {
   readonly islands: SkyIsland[] = [];
   /** 地牢入口(塔楼中心与地面) */
   readonly dungeon: { x: number; z: number; ground: number };
-  readonly hellForts: Array<{ x: number; z: number }> = [];
+  readonly hellForts: Array<{ x: number; z: number; base: number; chest: boolean }> = [];
   private readonly boxes: Array<{ box: Box; loot: LootTable; build: (set: SetFn, soft: SetFn) => void }> = [];
   private readonly seed: number;
 
@@ -104,7 +104,7 @@ export class Structures {
       this.boxes.push({
         box: { x0: f.x - 5, x1: f.x + 5, z0: f.z - 5, z1: f.z + 5, y0: 1, y1: 34 },
         loot: 'hell',
-        build: (set) => this.buildHellFort(set, f.x, f.z),
+        build: (set) => this.buildHellFort(set, f.x, f.z, f.base, f.chest),
       });
     }
   }
@@ -181,30 +181,26 @@ export class Structures {
     return fallback ?? { x: 320, z: -180, ground: this.t.heightAt(320, -180) };
   }
 
-  /** 地狱遗迹 ×3:在灰烬岸(hellFloor 高于岩浆)上找落脚点 */
+  /**
+   * 地狱黑曜石楼 ×8:密集分布、高低错落;三态基座——干岸楼(坐灰烬岸)、
+   * 半埋楼(下部埋在灰烬块下)、浸浆楼(下部浸在岩浆里)。
+   */
   private placeHellForts(): void {
-    for (let i = 0; i < 3; i++) {
-      const a = hash2(i, 3, this.seed ^ 0xf0f1) * TWO_PI;
-      const d = 100 + i * 85;
+    const N = 12; // 密集分布:地狱里常能遇到黑曜石楼
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * TWO_PI + (hash2(i, 3, this.seed ^ 0xf0f1) - 0.5) * 0.5;
+      const d = 42 + (i % 6) * 18 + hash2(i, 7, this.seed ^ 0xf0f5) * 14;
       const cx = Math.round(Math.cos(a) * d);
       const cz = Math.round(Math.sin(a) * d);
-      outer: for (let ring = 0; ring <= 64; ring += 3) {
-        for (let dx = -ring; dx <= ring; dx += 3) {
-          for (let dz = -ring; dz <= ring; dz += 3) {
-            if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
-            const x = cx + dx;
-            const z = cz + dz;
-            // 中心在灰烬岸上(高于本区域岩浆液面),门前(+x)可落脚
-            const ok =
-              this.t.hellFloor(x, z) >= this.t.hellLava(x, z) + 1 &&
-              this.t.hellFloor(x + 5, z) >= this.t.hellLava(x + 5, z);
-            if (ok) {
-              this.hellForts.push({ x, z });
-              break outer;
-            }
-          }
-        }
-      }
+      const hf = this.t.hellFloor(cx, cz);
+      const hl = this.t.hellLava(cx, cz);
+      const kind = i % 3;
+      let base: number;
+      if (kind === 0) base = hf + 1; // 干岸楼:坐落灰烬岸上
+      else if (kind === 1) base = hf - 4; // 半埋楼:下部埋在灰烬下
+      else base = Math.min(hf, hl) - 3; // 浸浆楼:下部在岩浆/低洼里
+      // 只有少数楼藏宝(大部分空楼):每 4 座一座藏宝楼
+      this.hellForts.push({ x: cx, z: cz, base: Math.max(3, base), chest: i % 4 === 0 });
     }
   }
 
@@ -657,9 +653,8 @@ export class Structures {
     }
   }
 
-  /** 地狱遗迹:灰烬岸上的两层黑曜石楼房,四角地狱石光柱,箭窗,层层藏宝 */
-  private buildHellFort(set: SetFn, fx: number, fz: number): void {
-    const base = this.t.hellFloor(fx, fz) + 1; // 坐落在本地灰烬岸上(高于岩浆)
+  /** 地狱黑曜石楼:两层黑曜石 + 四角地狱石光柱 + 箭窗;仅藏宝楼放宝箱(多数空楼) */
+  private buildHellFort(set: SetFn, fx: number, fz: number, base: number, hasChest: boolean): void {
     const O = Block.Obsidian;
     const mid = base + 6; // 层间楼板
     const roof = base + 12; // 屋顶
@@ -705,12 +700,15 @@ export class Structures {
     // 上楼开口(层板留洞)
     set(fx + 2, mid, fz + 2, Block.Air);
     set(fx + 2, mid, fz + 1, Block.Air);
-    // 层层藏宝:一层两箱、二层两箱 + 双层地灯
-    set(fx - 2, base + 1, fz, Block.Chest);
-    set(fx + 2, base + 1, fz - 2, Block.Chest);
-    set(fx - 2, mid + 1, fz - 1, Block.Chest);
-    set(fx + 1, mid + 1, fz + 2, Block.Chest);
+    // 双层地灯(每座都有)
     set(fx, base, fz, Block.Glowstone);
     set(fx, mid, fz, Block.Glowstone);
+    // 藏宝楼才放宝箱(一层两箱、二层两箱);多数为空楼,只是黑曜石建筑
+    if (hasChest) {
+      set(fx - 2, base + 1, fz, Block.Chest);
+      set(fx + 2, base + 1, fz - 2, Block.Chest);
+      set(fx - 2, mid + 1, fz - 1, Block.Chest);
+      set(fx + 1, mid + 1, fz + 2, Block.Chest);
+    }
   }
 }

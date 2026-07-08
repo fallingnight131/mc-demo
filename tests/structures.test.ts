@@ -162,21 +162,33 @@ describe('Terraria 3D 地标', () => {
     expect(S.lootAt(x - 8, g - 10, z - 8)).toBe('dungeon');
   });
 
-  it('地狱遗迹:灰烬岸上的两层黑曜石楼房,地狱石光柱,层层藏宝与地灯', () => {
-    expect(S.hellForts.length).toBeGreaterThanOrEqual(2);
+  it('地狱黑曜石楼:密集多座、高低错落;少数藏宝楼,多数空楼', () => {
+    expect(S.hellForts.length).toBeGreaterThanOrEqual(8); // 密集分布(常能遇到)
+    const bases = new Set(S.hellForts.map((f) => f.base));
+    expect(bases.size).toBeGreaterThan(2); // 高低错落(基座各异:干岸/半埋/浸浆)
+    let treasure = 0;
+    let empty = 0;
     for (const f of S.hellForts) {
-      const base = gen.hellFloor(f.x, f.z) + 1; // 楼房坐落在本地灰烬岸上
+      const base = f.base;
       const yl = base - 1;
       const yh = base + 13;
       const obsidian = countIn(at, f.x - 5, f.x + 5, yl, yh, f.z - 5, f.z + 5, Block.Obsidian);
-      expect(obsidian).toBeGreaterThan(80); // 两层楼比旧残垣更多黑曜石
-      const chests = countIn(at, f.x - 5, f.x + 5, yl, yh, f.z - 5, f.z + 5, Block.Chest);
-      expect(chests).toBe(4); // 层层藏宝:两层各两箱
+      expect(obsidian).toBeGreaterThan(80); // 每座都是两层黑曜石楼
       const hellstone = countIn(at, f.x - 5, f.x + 5, yl, yh, f.z - 5, f.z + 5, Block.Hellstone);
       expect(hellstone).toBeGreaterThan(20); // 四角地狱石光柱
-      expect(at(f.x, base, f.z)).toBe(Block.Glowstone);
-      expect(S.lootAt(f.x - 2, base + 1, f.z)).toBe('hell');
+      expect(at(f.x, base, f.z)).toBe(Block.Glowstone); // 地灯
+      const chests = countIn(at, f.x - 5, f.x + 5, yl, yh, f.z - 5, f.z + 5, Block.Chest);
+      if (f.chest) {
+        treasure++;
+        expect(chests).toBe(4); // 藏宝楼:两层各两箱
+        expect(S.lootAt(f.x - 2, base + 1, f.z)).toBe('hell');
+      } else {
+        empty++;
+        expect(chests).toBe(0); // 空楼:无宝箱
+      }
     }
+    expect(treasure).toBeGreaterThanOrEqual(1); // 有藏宝楼
+    expect(empty).toBeGreaterThan(treasure); // 但多数是空楼
   });
 
   it('地标选址确定性:同种子生成器给出一致位置', () => {
