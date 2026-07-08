@@ -42,9 +42,12 @@ const look = (mx, my, steps = 20) =>
     [mx, my, steps],
   );
 
-// 里程碑 41:装配经典方块布局(供清档 reload 后的放置类测试沿用)
+// 里程碑 41/51:装配经典方块布局 + 背包塞满全物品(供清档 reload 后放置/背包取块测试沿用)
 const equipBlocks = (ctx = page) =>
-  ctx.evaluate(() => window.__game.ui.setHotbar(window.__game.ui.blockHotbar()));
+  ctx.evaluate(() => {
+    window.__game.ui.setHotbar(window.__game.ui.blockHotbar());
+    window.__game.ui.giveAll();
+  });
 
 // 里程碑 41:初始快捷栏空手起步,仅带剑(102)/镐(101)/斧(103),其余为空(0)
 const freshBar = await page.evaluate(() => window.__game.ui.hotbar());
@@ -56,7 +59,23 @@ check(
     freshBar.slice(3).every((x) => x === 0),
   `初始 [${freshBar.join(',')}]`,
 );
-await equipBlocks(); // 之后所有放置类测试沿用经典方块布局
+// 里程碑 51:初始背包(E 面板)只有剑/镐/斧,而非创造全物品
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(200);
+const freshBag = await page.evaluate(() =>
+  [...document.querySelectorAll('#inv-grid .inv-slot')].map((e) => e.getAttribute('title')),
+);
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(150);
+check(
+  '初始背包:仅剑/镐/斧(非创造全物品)',
+  freshBag.length === 3 &&
+    freshBag.includes('剑') &&
+    freshBag.includes('镐子') &&
+    freshBag.includes('斧头'),
+  `初始背包 ${freshBag.length} 项:${freshBag.join('/')}`,
+);
+await equipBlocks(); // 之后所有放置类测试沿用经典方块布局 + 满背包
 
 const p0 = await pos();
 console.log('spawn:', p0.map((v) => v.toFixed(2)).join(' / '));

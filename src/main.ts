@@ -530,10 +530,16 @@ if (saved?.counts) {
   for (const [k, v] of Object.entries(saved.counts)) stats.counts[Number(k)] = v;
 }
 
-// 宝箱/背包存储(泰拉式双栏):背包 27 格,每个宝箱 20 格;随存档保存
-const STASH_SIZE = 27;
+// 宝箱/背包存储(泰拉式):背包 40 格(装得下全部物品),每个宝箱 20 格;随存档保存
+const STASH_SIZE = 40;
 const CHEST_SIZE = 20;
 const stash: Slot[] = deserializeSlots(STASH_SIZE, saved?.stash);
+if (!saved?.stash) {
+  // 初始背包只有剑/镐/斧(非创造全物品);其余物品靠破坏方块 / 开宝箱收集
+  addToSlots(stash, Tool.Sword, 1);
+  addToSlots(stash, Tool.Pickaxe, 1);
+  addToSlots(stash, Tool.Axe, 1);
+}
 const chestStore = new Map<string, Slot[]>();
 if (saved?.chests) {
   for (const [k, v] of Object.entries(saved.chests)) {
@@ -712,6 +718,7 @@ function openInventory(): void {
   leftHeld = false;
   leftDownAt = 0;
   mining = null;
+  refreshInventory(); // 反映当前背包(收集到的物品)
   hud.setInventoryVisible(true);
   // 真实浏览器中释放指针以便点击(测试模式的 forceLock 不受影响)
   if (document.pointerLockElement) document.exitPointerLock();
@@ -729,12 +736,18 @@ function closeInventory(relock: boolean): void {
   }
 }
 
-hud.buildInventory(INVENTORY_ITEMS.map(slotFor), (id) => {
-  hotbar[selectedSlot] = id;
-  refreshHotbar();
-  hud.toast(`${slotFor(id).name} → 槽位 ${(selectedSlot + 1) % 10}`);
-  closeInventory(true);
-});
+// 背包(E):只展示你拥有的物品(背包 stash),而非创造全物品调色板。
+// 点某物放入当前手持槽位;初始只有剑/镐/斧,收集方块后逐渐充实。
+function refreshInventory(): void {
+  const owned = stash.filter((s): s is NonNullable<Slot> => s !== null).map((s) => s.id);
+  hud.buildInventory(owned.map(slotFor), (id) => {
+    hotbar[selectedSlot] = id;
+    refreshHotbar();
+    hud.toast(`${slotFor(id).name} → 槽位 ${(selectedSlot + 1) % 10}`);
+    closeInventory(true);
+  });
+}
+refreshInventory();
 
 // 背包的无键盘退出:点空白背景或右上角 ✕(手机端必需,桌面也顺手)
 document.getElementById('inventory')!.addEventListener('click', (e) => {
@@ -1547,6 +1560,11 @@ if (new URLSearchParams(location.search).has('test')) {
         syncHeld();
       },
       blockHotbar: () => PLACEABLE.slice(0, HOTBAR_SIZE),
+      // 调试:把全部物品塞进背包(供 e2e 从背包取任意方块)
+      giveAll: () => {
+        for (const id of INVENTORY_ITEMS) if (!stash.some((s) => s?.id === id)) addToSlots(stash, id, 99);
+        refreshInventory();
+      },
     },
     view: () => viewMode,
     toggleView: () => toggleView(),
