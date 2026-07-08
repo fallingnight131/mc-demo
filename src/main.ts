@@ -26,6 +26,7 @@ import { PlayerModel, thirdPersonDist } from './playermodel';
 import { Sky, SKY_HORIZON } from './sky';
 import { materialOf, Sound } from './sound';
 import { CHEST_LOOT } from './structures';
+import { addToSlots, deserializeSlots, makeSlots, moveStack, serializeSlots, type Slot } from './chest';
 import { isTool, Tool, TOOL_DEFS, TOOL_IDS } from './tools';
 import { buildCrackTextures, buildMobTextures, buildTextures, buildWaterTexture } from './textures';
 import { isTouchDevice, TouchControls } from './touch';
@@ -131,6 +132,8 @@ interface SaveData {
   hotbar?: number[];
   hp?: number;
   creative?: boolean;
+  stash?: Array<[number, number, number]>;
+  chests?: Record<string, Array<[number, number, number]>>;
 }
 let saved: SaveData | null = null;
 try {
@@ -199,6 +202,10 @@ function saveGame(): void {
       hotbar: [...hotbar],
       hp,
       creative: creativeMode,
+      stash: serializeSlots(stash),
+      chests: Object.fromEntries(
+        [...chestStore].map(([k, v]) => [k, serializeSlots(v)]),
+      ),
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     world.editsDirty = false;
@@ -523,6 +530,29 @@ if (saved?.counts) {
   for (const [k, v] of Object.entries(saved.counts)) stats.counts[Number(k)] = v;
 }
 
+// 宝箱/背包存储(泰拉式双栏):背包 27 格,每个宝箱 20 格;随存档保存
+const STASH_SIZE = 27;
+const CHEST_SIZE = 20;
+const stash: Slot[] = deserializeSlots(STASH_SIZE, saved?.stash);
+const chestStore = new Map<string, Slot[]>();
+if (saved?.chests) {
+  for (const [k, v] of Object.entries(saved.chests)) {
+    chestStore.set(k, deserializeSlots(CHEST_SIZE, v));
+  }
+}
+let chestOpen = false;
+let openChestKey: string | null = null;
+/** 槽位 → HUD 视图(图标 + 名称 + 数量) */
+const slotView = (s: Slot) =>
+  s
+    ? {
+        id: s.id,
+        count: s.count,
+        name: isTool(s.id) ? TOOL_DEFS[s.id].name : BLOCK_DEFS[s.id].name,
+        icon: isTool(s.id) ? textures.toolIconFor(s.id) : textures.iconFor(s.id),
+      }
+    : null;
+
 function refreshHotbar(): void {
   hud.buildHotbar(hotbar.map(slotFor));
   hud.setSelected(selectedSlot);
@@ -645,11 +675,14 @@ input.onLockChange = (locked) => {
     started = true;
     sound.unlock();
     hud.setOverlayHint('');
-    // 重新锁定时背包必然是关闭状态
+    // 重新锁定时背包/宝箱必然是关闭状态
     inventoryOpen = false;
     hud.setInventoryVisible(false);
+    chestOpen = false;
+    openChestKey = null;
+    hud.setChestVisible(false);
   }
-  hud.setOverlayVisible(!locked && !inventoryOpen, started);
+  hud.setOverlayVisible(!locked && !inventoryOpen && !chestOpen, started);
   if (!locked) {
     sound.setAmbience(0, 0); // 暂停时环境声淡出
     sound.setScape(0, 0);
@@ -715,7 +748,7 @@ function codexDesc(id: number): string {
   const def = BLOCK_DEFS[id];
   const curated: Record<number, string> = {
     [Block.TNT]: '点燃后爆炸,可连锁',
-    [Block.Chest]: '点按开箱得战利品(地标)',
+    [Block.Chest]: '点开:宝箱↕背包双栏存取',
     [Block.Torch]: '光源 14 · 照亮洞穴',
     [Block.Glowstone]: '光源 15 · 永久明亮',
     [Block.Obsidian]: '极硬 · 抗爆',
@@ -793,6 +826,11 @@ document.getElementById('codex-close')!.addEventListener('click', (e) => {
 });
 document.getElementById('codex')!.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).id === 'codex') hud.setCodexVisible(false);
+});
+// 宝箱:✕ 或点暗背景关闭(回到游戏)
+document.getElementById('chest-close')!.addEventListener('click', () => closeChest(true));
+document.getElementById('chest')!.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).id === 'chest') closeChest(true);
 });
 
 // 兜底:游戏中途失锁且无遮罩时,点画布重新锁定
@@ -875,16 +913,46 @@ let leftHeld = false;
 const TAP_MS = 230;
 let leftDownAt = 0;
 
-/** 开箱:宝箱消失,按所在地标喷出战利品 */
+/** 开箱:打开泰拉式双栏(宝箱↕背包);宝箱保留为存储,首次打开按战利品表填充 */
 function openChest(hit: RayHit): void {
-  world.setBlock(hit.x, hit.y, hit.z, Block.Air);
-  sound.chest();
-  particles.burst(hit.x, hit.y, hit.z, Block.Chest, 14);
-  const table = world.gen.structures.lootAt(hit.x, hit.y, hit.z);
-  for (const id of CHEST_LOOT[table]) {
-    drops.spawn(hit.x, hit.y, hit.z, id);
+  const key = `${hit.x},${hit.y},${hit.z}`;
+  let slots = chestStore.get(key);
+  if (!slots) {
+    slots = makeSlots(CHEST_SIZE);
+    const table = world.gen.structures.lootAt(hit.x, hit.y, hit.z);
+    for (const id of CHEST_LOOT[table] ?? []) addToSlots(slots, id, 1);
+    chestStore.set(key, slots);
   }
-  hud.toast('开箱!');
+  openChestKey = key;
+  chestOpen = true;
+  leftHeld = false;
+  leftDownAt = 0;
+  mining = null;
+  sound.chest();
+  refreshChestUI();
+  hud.setChestVisible(true);
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+/** 重绘宝箱双栏,并接线点击转移(整堆在宝箱与背包间移动) */
+function refreshChestUI(): void {
+  const slots = openChestKey ? chestStore.get(openChestKey) : null;
+  if (!slots) return;
+  hud.buildChest(slots.map(slotView), stash.map(slotView), (side, i) => {
+    if (side === 'chest') moveStack(slots, i, stash);
+    else moveStack(stash, i, slots);
+    refreshChestUI();
+    world.editsDirty = true; // 触发周期存档持久化宝箱/背包
+  });
+}
+
+function closeChest(relock: boolean): void {
+  if (!chestOpen) return;
+  chestOpen = false;
+  openChestKey = null;
+  hud.setChestVisible(false);
+  if (relock && !input.locked) engage();
+  else if (!relock) hud.setOverlayVisible(!input.locked, started);
 }
 
 /** 点按:宝箱开箱;手持打火石对准 TNT 才点燃(因此 TNT 可以互相堆叠),否则放置 */
@@ -928,8 +996,8 @@ function tapInteract(): void {
 }
 
 input.onMouseDown = (button) => {
-  // 触屏统一走手势层;背包打开时的点选不得落入游戏(软锁下 locked 恒真)
-  if (touch || inventoryOpen) return;
+  // 触屏统一走手势层;背包/宝箱打开时的点选不得落入游戏(软锁下 locked 恒真)
+  if (touch || inventoryOpen || chestOpen) return;
   if (button === 0) {
     leftHeld = true;
     leftDownAt = performance.now();
@@ -958,7 +1026,7 @@ input.onMouseDown = (button) => {
   }
 };
 input.onMouseUp = (button) => {
-  if (touch || inventoryOpen) {
+  if (touch || inventoryOpen || chestOpen) {
     leftHeld = false;
     leftDownAt = 0;
     return;
@@ -982,6 +1050,8 @@ drops.onPickup = (id) => {
   stats.counts[id] = (stats.counts[id] ?? 0) + 1;
   const slot = hotbar.indexOf(id);
   if (slot >= 0) hud.setSlotCount(slot, stats.counts[id]);
+  addToSlots(stash, id, 1); // 进入背包存储(可存入宝箱)
+  if (chestOpen) refreshChestUI();
   sound.pop();
   hud.toast(`+1 ${BLOCK_DEFS[id].name}`);
 };
@@ -1012,8 +1082,11 @@ input.onKey = (code) => {
       hud.toast(`视角距离 ${thirdDist.toFixed(1)}`);
     }
   } else if (code === 'KeyE') {
-    if (inventoryOpen) closeInventory(true);
+    if (chestOpen) closeChest(true);
+    else if (inventoryOpen) closeInventory(true);
     else if (input.locked) openInventory();
+  } else if (code === 'Escape' && chestOpen) {
+    closeChest(false); // 关宝箱,回到暂停界面
   } else if (code === 'Escape' && inventoryOpen) {
     closeInventory(false); // 关背包,回到暂停界面
   }

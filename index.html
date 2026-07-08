@@ -544,6 +544,95 @@
         line-height: 1.3;
       }
 
+      /* 宝箱双栏(泰拉式):上宝箱、下背包,点物品在两栏间移动 */
+      #chest {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 12, 22, 0.6);
+        z-index: 11;
+      }
+      #chest.open {
+        display: flex;
+      }
+      .chest-panel {
+        position: relative;
+        background: rgba(0, 0, 0, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 10px;
+        padding: 16px 20px;
+        max-width: min(560px, 94vw);
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      #chest-close {
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        cursor: pointer;
+      }
+      #chest-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .chest-title {
+        color: #ffd98a;
+        font-size: 14px;
+        margin-bottom: 8px;
+        text-align: center;
+      }
+      .chest-label {
+        color: #9fd0ff;
+        font-size: 12px;
+        margin: 10px 0 6px;
+      }
+      .chest-grid {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 4px;
+      }
+      .chest-slot {
+        position: relative;
+        aspect-ratio: 1;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: default;
+      }
+      .chest-slot canvas {
+        width: 82%;
+        height: 82%;
+        image-rendering: pixelated;
+        cursor: pointer;
+      }
+      .chest-slot:has(canvas):hover {
+        border-color: #ffe27a;
+        background: rgba(255, 255, 255, 0.16);
+      }
+      .chest-count {
+        position: absolute;
+        right: 2px;
+        bottom: 0;
+        font-size: 10px;
+        color: #fff;
+        text-shadow: 0 1px 1px #000, 0 0 2px #000;
+        pointer-events: none;
+      }
+
       #item-name {
         position: fixed;
         left: 50%;
@@ -822,6 +911,13 @@
         <div id="codex-close">✕</div>
         <div class="codex-title">图鉴</div>
         <div id="codex-body"></div>
+      </div>
+    </div>
+    <div id="chest">
+      <div class="chest-panel">
+        <div id="chest-close">✕</div>
+        <div class="chest-title">宝箱 — 点物品在宝箱与背包间存取</div>
+        <div id="chest-body"></div>
       </div>
     </div>
     <div id="crosshair"></div>

@@ -1639,22 +1639,73 @@ await page.waitForTimeout(300);
 await page.mouse.down();
 await page.waitForTimeout(70);
 await page.mouse.up();
-await page.waitForTimeout(1200); // 战利品磁吸拾取
+await page.waitForTimeout(350); // 开箱:弹出泰拉式双栏
 const treeLoot = await page.evaluate((t) => {
   const g = window.__game;
   return {
-    chestGone: g.world.getBlock(t.x, t.ground + 1, t.z) === 0,
-    gained: g.stats.pickups,
-    drops: g.drops.count,
+    chestStays: g.world.getBlock(t.x, t.ground + 1, t.z) === 43, // 宝箱保留为存储
+    uiOpen: document.getElementById('chest').classList.contains('open'),
+    chestItems: document.querySelectorAll('.chest-grid-chest .chest-slot canvas').length,
   };
 }, treeInfo);
+await page.evaluate(() => document.getElementById('chest-close').click());
+await page.waitForTimeout(150);
 check(
-  '地标:世界树与开箱',
+  '地标:世界树与开箱(泰拉双栏)',
   treeCheck.logs >= 9 &&
     treeCheck.chest &&
-    treeLoot.chestGone &&
-    (treeLoot.gained > treeCheck.pickups || treeLoot.drops > 0),
-  `树干原木 ${treeCheck.logs}/10,宝箱开出战利品:拾取 ${treeCheck.pickups}→${treeLoot.gained},场上掉落 ${treeLoot.drops}`,
+    treeLoot.chestStays &&
+    treeLoot.uiOpen &&
+    treeLoot.chestItems > 0,
+  `树干原木 ${treeCheck.logs}/10,宝箱保留 ${treeLoot.chestStays},双栏打开 ${treeLoot.uiOpen},宝箱物品 ${treeLoot.chestItems}`,
+);
+
+// --- 宝箱:泰拉式双栏存取(放置宝箱 → 点开 → 点物品在宝箱↔背包间转移) ---
+const chestSetup = await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) - 4;
+  const z = Math.floor(s.z) + 8;
+  const h = g.world.gen.heightAt(x, z);
+  g.world.setBlock(x, h + 1, z, 43); // Block.Chest = 43
+  g.player.pos.set(x + 0.5, h + 1.01, z + 2);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0; // 朝 -z 对准箱子
+  g.player.pitch = -0.55;
+  return { placed: g.world.getBlock(x, h + 1, z) === 43 };
+});
+await page.waitForTimeout(200);
+await page.mouse.down(); // 点按开箱
+await page.mouse.up();
+await page.waitForTimeout(320);
+const chestUI = await page.evaluate(() => ({
+  open: document.getElementById('chest').classList.contains('open'),
+  items: document.querySelectorAll('.chest-grid-chest .chest-slot canvas').length,
+}));
+let chestXfer = { chest: -1, stash: -1 };
+if (chestUI.open && chestUI.items > 0) {
+  await page.click('.chest-grid-chest .chest-slot:has(canvas)'); // 点宝箱一格 → 移到背包
+  await page.waitForTimeout(160);
+  chestXfer = await page.evaluate(() => ({
+    chest: document.querySelectorAll('.chest-grid-chest .chest-slot canvas').length,
+    stash: document.querySelectorAll('.chest-grid-stash .chest-slot canvas').length,
+  }));
+  await page.screenshot({ path: `${OUT}/30-chest.png` });
+}
+await page.evaluate(() => document.getElementById('chest-close').click());
+await page.waitForTimeout(150);
+const chestClosed = await page.evaluate(
+  () => !document.getElementById('chest').classList.contains('open'),
+);
+check(
+  '宝箱:泰拉式双栏存取',
+  chestSetup.placed &&
+    chestUI.open &&
+    chestUI.items > 0 &&
+    chestXfer.chest === chestUI.items - 1 &&
+    chestXfer.stash >= 1 &&
+    chestClosed,
+  `放置 ${chestSetup.placed},开箱物品 ${chestUI.items},转移后 宝箱 ${chestXfer.chest}/背包 ${chestXfer.stash},关闭 ${chestClosed}`,
 );
 
 // 天空岛:传送上岛,断言天空层/悬空/神龛宝箱

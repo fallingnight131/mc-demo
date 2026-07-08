@@ -17,6 +17,14 @@ export interface CodexCategory {
   entries: CodexEntry[];
 }
 
+/** 宝箱/背包槽位视图:图标 + 名称 + 堆叠数 */
+export interface ChestSlotView {
+  id: number;
+  name: string;
+  count: number;
+  icon: HTMLCanvasElement;
+}
+
 /** 图标画布可能同时出现在快捷栏与背包的多个槽位,DOM 中必须用副本 */
 function copyIcon(src: HTMLCanvasElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -118,6 +126,47 @@ export class HUD {
 
   setCodexVisible(v: boolean): void {
     document.getElementById('codex')!.classList.toggle('open', v);
+  }
+
+  /** 宝箱双栏(泰拉式):上宝箱、下背包,点某格把整堆移到另一侧 */
+  buildChest(
+    chestSlots: (ChestSlotView | null)[],
+    stashSlots: (ChestSlotView | null)[],
+    onTransfer: (side: 'chest' | 'stash', index: number) => void,
+  ): void {
+    const body = document.getElementById('chest-body')!;
+    body.innerHTML = '';
+    const grid = (title: string, slots: (ChestSlotView | null)[], side: 'chest' | 'stash') => {
+      const label = document.createElement('div');
+      label.className = 'chest-label';
+      label.textContent = title;
+      body.appendChild(label);
+      const g = document.createElement('div');
+      g.className = 'chest-grid chest-grid-' + side;
+      slots.forEach((s, i) => {
+        const el = document.createElement('div');
+        el.className = 'chest-slot';
+        if (s) {
+          el.appendChild(copyIcon(s.icon));
+          if (s.count > 1) {
+            const c = document.createElement('span');
+            c.className = 'chest-count';
+            c.textContent = String(s.count);
+            el.appendChild(c);
+          }
+          el.title = s.name;
+          el.addEventListener('click', () => onTransfer(side, i));
+        }
+        g.appendChild(el);
+      });
+      body.appendChild(g);
+    };
+    grid('宝箱', chestSlots, 'chest');
+    grid('背包', stashSlots, 'stash');
+  }
+
+  setChestVisible(v: boolean): void {
+    document.getElementById('chest')!.classList.toggle('open', v);
   }
 
   /** 槽位右下角的拾取计数(0 则隐藏) */
