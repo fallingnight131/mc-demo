@@ -25,6 +25,31 @@ function smooth01(e0: number, e1: number, v: number): number {
   return t * t * (3 - 2 * t);
 }
 
+const TWO_PI = Math.PI * 2;
+// 血腥之地:大陆上一处局部圆区(非楔形扇区),中心鼓包 + 入口洞穴凿下地底
+const CRIMSON_RADIUS = 42;
+const CRIMSON_MOUND_R = 30;
+
+/** 两方位角的最小夹角 */
+function angDist(a: number, b: number): number {
+  const d = Math.abs(a - b) % TWO_PI;
+  return d > Math.PI ? TWO_PI - d : d;
+}
+/** 点到 3D 线段的距离 */
+function distToSeg(
+  px: number, py: number, pz: number,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const ab2 = abx * abx + aby * aby + abz * abz;
+  let t = ab2 > 0 ? ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / ab2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + abx * t), py - (ay + aby * t), pz - (az + abz * t));
+}
+
 export class Generator {
   readonly seed: number;
   private readonly hills: Noise2D;
@@ -52,8 +77,42 @@ export class Generator {
     this.riverAngles = [0, 1, 2].map(
       (i) => hash2(i * 17 + 3, i * 31 + 7, seed ^ 0x11e4) * Math.PI * 2,
     );
+    // 血腥之地中心(局部圆区,避开地牢/河流);先定中心再算鼓包后的地表高度
+    this.crimsonCenter = this.pickCrimsonCenter();
+    this.crimsonReady = true; // 之后 heightAt 才叠加中心鼓包
+    this.crimsonSurf = this.heightAt(this.crimsonCenter.x, this.crimsonCenter.z);
     // 地标(世界树/天空岛/地牢/地狱遗迹)选址依赖上面的地形函数,最后构造
     this.structures = new Structures(this);
+  }
+
+  /** 血腥之地中心与其鼓包顶的地表高度(入口洞穴由此凿下) */
+  readonly crimsonCenter: { x: number; z: number };
+  private crimsonSurf = 0;
+  private crimsonReady = false;
+
+  /** 选一处血腥之地圆心:避开地牢方位(≈5.15 rad)、河流,且落在陆地 */
+  private pickCrimsonCenter(): { x: number; z: number } {
+    const DUN_LO = 4.4;
+    const DUN_HI = 5.9;
+    for (let k = 0; k < 48; k++) {
+      const a = hash2(k * 13 + 1, k * 7 + 5, this.seed ^ 0xc21a5) * TWO_PI;
+      if (a > DUN_LO && a < DUN_HI) continue; // 避地牢
+      if (this.riverAngles.some((ra) => angDist(a, ra) < 0.55)) continue; // 避河
+      for (let d = 258; d <= 330; d += 8) {
+        const x = Math.round(Math.cos(a) * d);
+        const z = Math.round(Math.sin(a) * d);
+        if (this.heightAt(x, z) < SEA_LEVEL + 5) continue;
+        let land = true;
+        for (const [ox, oz] of [[38, 0], [-38, 0], [0, 38], [0, -38]]) {
+          if (this.heightAt(x + ox, z + oz) < SEA_LEVEL + 2) {
+            land = false;
+            break;
+          }
+        }
+        if (land) return { x, z };
+      }
+    }
+    return { x: Math.round(Math.cos(2.5) * 290), z: Math.round(Math.sin(2.5) * 290) };
   }
 
   /** 地标结构(Phase 4):区块生成时盖章,宝箱战利品查询 */
@@ -97,6 +156,14 @@ export class Generator {
       if (rd < 6) h = Math.min(h, bed);
       else h = Math.min(h, bed + ((rd - 6) / 14) * Math.max(6, (h - bed) * 0.7));
     }
+    // 血腥之地:中心一处圆丘鼓包(入口洞穴自鼓包顶凿下)
+    if (this.crimsonReady) {
+      const cr = Math.hypot(x - this.crimsonCenter.x, z - this.crimsonCenter.z);
+      if (cr < CRIMSON_MOUND_R) {
+        const t = 1 - cr / CRIMSON_MOUND_R;
+        h += t * t * 11;
+      }
+    }
     return Math.max(LAYER_HELL_TOP + 4, Math.min(WH - 40, Math.floor(h)));
   }
 
@@ -107,12 +174,15 @@ export class Generator {
   biomeAt(x: number, z: number): 'forest' | 'jungle' | 'corruption' | 'crimson' {
     const d = Math.hypot(x, z);
     if (d < 225) return 'forest'; // 出生盆地与山脉(群系从山外坡开始)
+    // 血腥之地:大陆上一处局部圆区(边缘噪声扰动),而非楔形扇区——不再侵占地牢/河流
+    const cc = this.crimsonCenter;
+    const cd = Math.hypot(x - cc.x, z - cc.z) + this.biomeN.fbm(x * 0.03, z * 0.03, 2) * 7;
+    if (cd < CRIMSON_RADIUS) return 'crimson';
     let a = Math.atan2(z, x); // -π..π
     a += this.biomeN.fbm(x * 0.006, z * 0.006, 2) * 0.35; // 边界扰动
     if (a < 0) a += Math.PI * 2;
     if (a > 0.5 && a < 1.9) return 'jungle';
     if (a > 3.1 && a < 4.3) return 'corruption';
-    if (a > 5.0 && a < 6.1) return 'crimson'; // 血腥之地:与腐化相对的另一侧扇区
     return 'forest';
   }
 
@@ -133,13 +203,52 @@ export class Generator {
     return best;
   }
 
-  /** 腐化/血腥深谷:两大邪恶群系内蜿蜒裂缝,从地表直插洞穴层 */
+  /** 腐化深谷:腐化区内蜿蜒裂缝,从地表直插洞穴层(血腥地改用入口洞穴,不再有裂缝) */
   chasmAt(x: number, z: number): boolean {
-    const b = this.biomeAt(x, z);
-    if (b !== 'corruption' && b !== 'crimson') return false;
+    if (this.biomeAt(x, z) !== 'corruption') return false;
     const d = Math.hypot(x, z);
     if (d < 250 || d > CONTINENT_RADIUS - 60) return false;
     return Math.abs(this.chasmN.fbm(x * 0.012, z * 0.012, 2)) < 0.035;
+  }
+
+  /**
+   * 血腥入口洞穴:鼓包顶凿下的椭圆竖井 → 底部主腔 → 五条手指状分支
+   * (泰拉血腥地"恶魔手掌",examples/1,2)。pad 扩张半径用于生成血肉石洞壁。
+   */
+  crimsonCarve(x: number, y: number, z: number, pad = 0): boolean {
+    const cc = this.crimsonCenter;
+    const dx0 = x - cc.x;
+    const dz0 = z - cc.z;
+    if (dx0 * dx0 + dz0 * dz0 > 36 * 36) return false;
+    const surf = this.crimsonSurf;
+    // 入口竖井:自鼓包顶向下蜿蜒,椭圆开口
+    const topY = surf + 2;
+    const botY = surf - 30;
+    if (y <= topY && y >= botY) {
+      const t = (topY - y) / (topY - botY);
+      const mx = cc.x + Math.sin(t * 3.4) * 5.5;
+      const mz = cc.z + Math.cos(t * 2.3) * 4.5;
+      const r = 5.6 - t * 1.2 + pad;
+      if ((x - mx) ** 2 + (z - mz) ** 2 < r * r) return true;
+    }
+    // 底部主腔(椭球)
+    const chx = cc.x;
+    const chy = surf - 35;
+    const chz = cc.z;
+    if (
+      ((x - chx) / (11 + pad)) ** 2 + ((y - chy) / (8 + pad)) ** 2 + ((z - chz) / (11 + pad)) ** 2 <
+      1
+    ) {
+      return true;
+    }
+    // 五条手指分支:主腔向外下方伸出(恶魔手掌)
+    for (let f = 0; f < 5; f++) {
+      const a = (f / 5) * TWO_PI + 0.4;
+      const ex = chx + Math.cos(a) * 21;
+      const ez = chz + Math.sin(a) * 21;
+      if (distToSeg(x, y, z, chx, chy, chz, ex, chy - 7, ez) < 3.3 + pad) return true;
+    }
+    return false;
   }
 
   hasTree(x: number, z: number): boolean {
@@ -225,6 +334,9 @@ export class Generator {
     const data = new Uint8Array(CS * CS * WH);
     const ox = cx * CS;
     const oz = cz * CS;
+    // 本区块是否临近血腥入口洞穴(是则逐格参与凿刻,否则完全跳过)
+    const cc = this.crimsonCenter;
+    const nearCrimson = Math.hypot(ox + CS / 2 - cc.x, oz + CS / 2 - cc.z) < 44 + CS;
 
     const idx = (lx: number, y: number, lz: number) => (y * CS + lz) * CS + lx;
     const inBounds = (lx: number, y: number, lz: number) =>
@@ -282,6 +394,11 @@ export class Generator {
           else if (biome === 'corruption') id = Block.CorruptGrass;
           else if (biome === 'crimson') id = Block.CrimsonGrass;
           else id = Block.Grass;
+          // 血腥入口洞穴:凿空竖井/主腔/手指分支,洞壁镶血肉石(examples/1,2)
+          if (nearCrimson && id !== Block.Bedrock) {
+            if (this.crimsonCarve(wx, y, wz, 0)) id = Block.Air;
+            else if (id !== Block.Air && this.crimsonCarve(wx, y, wz, 1.8)) id = Block.Crimstone;
+          }
           data[idx(lx, y, lz)] = id;
         }
         for (let y = h + 1; y <= SEA_LEVEL; y++) {

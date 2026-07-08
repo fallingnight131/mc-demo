@@ -3,3 +3,5 @@ dist/
 scripts/shots/
 scripts/items/
 examples/
+
+.DS_Store

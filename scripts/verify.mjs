@@ -1497,10 +1497,22 @@ const biomeSpots = await page.evaluate(() => {
     }
     return null;
   };
+  // 血腥之地是局部圆区(非扇区):从血腥中心向外找一处地表(避开中心入口洞穴)
+  const cc = g.world.gen.crimsonCenter;
+  let crimson = null;
+  for (const [ox, oz] of [[24, 0], [-24, 0], [0, 24], [0, -24], [18, 18], [-18, -18], [26, 10]]) {
+    const x = cc.x + ox;
+    const z = cc.z + oz;
+    if (g.world.gen.biomeAt(x, z) === 'crimson' && g.world.gen.heightAt(x, z) > 130) {
+      crimson = { x, z };
+      break;
+    }
+  }
+  if (!crimson) crimson = { x: cc.x + 24, z: cc.z };
   return {
     jungle: find('jungle', 0.85, 1.6),
     corruption: find('corruption', 3.45, 4.0),
-    crimson: find('crimson', 5.2, 5.9),
+    crimson,
   };
 });
 if (biomeSpots.jungle) {
