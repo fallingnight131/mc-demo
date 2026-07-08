@@ -30,6 +30,15 @@ const TWO_PI = Math.PI * 2;
 const CRIMSON_RADIUS = 42;
 const CRIMSON_MOUND_R = 30;
 
+type Vec3 = [number, number, number];
+/** 血腥地下几何:之字形长廊 + 主腔 + 手指分支 + 祭坛 */
+interface CrimsonGeo {
+  corridor: Vec3[];
+  chamber: Vec3;
+  fingers: Array<[Vec3, Vec3]>;
+  altar: Vec3;
+}
+
 /** 两方位角的最小夹角 */
 function angDist(a: number, b: number): number {
   const d = Math.abs(a - b) % TWO_PI;
@@ -81,6 +90,7 @@ export class Generator {
     this.crimsonCenter = this.pickCrimsonCenter();
     this.crimsonReady = true; // 之后 heightAt 才叠加中心鼓包
     this.crimsonSurf = this.heightAt(this.crimsonCenter.x, this.crimsonCenter.z);
+    this.crimsonGeo = this.buildCrimsonGeo();
     // 地标(世界树/天空岛/地牢/地狱遗迹)选址依赖上面的地形函数,最后构造
     this.structures = new Structures(this);
   }
@@ -89,6 +99,36 @@ export class Generator {
   readonly crimsonCenter: { x: number; z: number };
   private crimsonSurf = 0;
   private crimsonReady = false;
+  private readonly crimsonGeo: CrimsonGeo;
+
+  /**
+   * 血腥地下几何(examples/1):入口大洞口 → 之字形长廊(恶魔手臂,含血腥祭坛)
+   * → 中空开阔主腔(手掌)→ 若干封闭手指分支(手指,末端留白待放恶魔之心)。
+   */
+  private buildCrimsonGeo(): CrimsonGeo {
+    const cc = this.crimsonCenter;
+    const s = this.crimsonSurf;
+    // 之字形长廊:自入口向下,x 方向来回摆(像恶魔手臂)
+    const corridor: Vec3[] = [
+      [cc.x, s - 3, cc.z],
+      [cc.x - 11, s - 9, cc.z + 2],
+      [cc.x + 11, s - 15, cc.z - 2],
+      [cc.x - 8, s - 22, cc.z + 3],
+      [cc.x, s - 28, cc.z],
+    ];
+    const chamber: Vec3 = [cc.x, s - 34, cc.z];
+    const fingers: Array<[Vec3, Vec3]> = [];
+    for (let f = 0; f < 5; f++) {
+      const a = (f / 5) * TWO_PI + 0.4;
+      fingers.push([
+        [chamber[0], chamber[1], chamber[2]],
+        [chamber[0] + Math.cos(a) * 24, chamber[1] - 7, chamber[2] + Math.sin(a) * 24],
+      ]);
+    }
+    // 血腥祭坛:长廊尽头、主腔上缘的一小方猩红石台
+    const altar: Vec3 = [corridor[4][0], corridor[4][1] - 1, corridor[4][2]];
+    return { corridor, chamber, fingers, altar };
+  }
 
   /** 选一处血腥之地圆心:避开地牢方位(≈5.15 rad)、河流,且落在陆地 */
   private pickCrimsonCenter(): { x: number; z: number } {
@@ -212,41 +252,41 @@ export class Generator {
   }
 
   /**
-   * 血腥入口洞穴:鼓包顶凿下的椭圆竖井 → 底部主腔 → 五条手指状分支
-   * (泰拉血腥地"恶魔手掌",examples/1,2)。pad 扩张半径用于生成血肉石洞壁。
+   * 血腥入口洞穴(examples/1,2):半圆碗形大洞口 → 之字形长廊(恶魔手臂)
+   * → 中空开阔主腔(手掌)→ 五条封闭手指分支(手指)。pad 扩张半径用于凿血肉石洞壁。
    */
   crimsonCarve(x: number, y: number, z: number, pad = 0): boolean {
     const cc = this.crimsonCenter;
     const dx0 = x - cc.x;
     const dz0 = z - cc.z;
-    if (dx0 * dx0 + dz0 * dz0 > 36 * 36) return false;
-    const surf = this.crimsonSurf;
-    // 入口竖井:自鼓包顶向下蜿蜒,椭圆开口
-    const topY = surf + 2;
-    const botY = surf - 30;
-    if (y <= topY && y >= botY) {
-      const t = (topY - y) / (topY - botY);
-      const mx = cc.x + Math.sin(t * 3.4) * 5.5;
-      const mz = cc.z + Math.cos(t * 2.3) * 4.5;
-      const r = 5.6 - t * 1.2 + pad;
-      if ((x - mx) ** 2 + (z - mz) ** 2 < r * r) return true;
+    if (dx0 * dx0 + dz0 * dz0 > 42 * 42) return false;
+    const g = this.crimsonGeo;
+    const s = this.crimsonSurf;
+    // 入口:半圆碗形大洞口(顶部宽,向下收成长廊口)
+    if (y <= s + 2 && y >= s - 7) {
+      const t = (s + 2 - y) / 9; // 0 顶 → 1 底
+      const r = 9 - t * 4.5 + pad;
+      if (dx0 * dx0 + dz0 * dz0 < r * r) return true;
     }
-    // 底部主腔(椭球)
-    const chx = cc.x;
-    const chy = surf - 35;
-    const chz = cc.z;
+    // 之字形长廊(恶魔手臂)
+    for (let i = 0; i < g.corridor.length - 1; i++) {
+      const a = g.corridor[i];
+      const b = g.corridor[i + 1];
+      if (distToSeg(x, y, z, a[0], a[1], a[2], b[0], b[1], b[2]) < 3.1 + pad) return true;
+    }
+    // 中空开阔主腔(椭球,手掌)
+    const ch = g.chamber;
     if (
-      ((x - chx) / (11 + pad)) ** 2 + ((y - chy) / (8 + pad)) ** 2 + ((z - chz) / (11 + pad)) ** 2 <
+      ((x - ch[0]) / (12 + pad)) ** 2 +
+        ((y - ch[1]) / (8 + pad)) ** 2 +
+        ((z - ch[2]) / (12 + pad)) ** 2 <
       1
     ) {
       return true;
     }
-    // 五条手指分支:主腔向外下方伸出(恶魔手掌)
-    for (let f = 0; f < 5; f++) {
-      const a = (f / 5) * TWO_PI + 0.4;
-      const ex = chx + Math.cos(a) * 21;
-      const ez = chz + Math.sin(a) * 21;
-      if (distToSeg(x, y, z, chx, chy, chz, ex, chy - 7, ez) < 3.3 + pad) return true;
+    // 五条手指分支(末端自然封闭:线段之外即实体,留白待放恶魔之心)
+    for (const [a, b] of g.fingers) {
+      if (distToSeg(x, y, z, a[0], a[1], a[2], b[0], b[1], b[2]) < 3 + pad) return true;
     }
     return false;
   }
@@ -404,10 +444,16 @@ export class Generator {
           else if (biome === 'corruption') id = Block.CorruptGrass;
           else if (biome === 'crimson') id = Block.CrimsonGrass;
           else id = Block.Grass;
-          // 血腥入口洞穴:凿空竖井/主腔/手指分支,洞壁镶血肉石(examples/1,2)
+          // 血腥入口洞穴:凿空长廊/主腔/手指分支,洞壁镶血肉石(examples/1,2)
           if (nearCrimson && id !== Block.Bedrock) {
             if (this.crimsonCarve(wx, y, wz, 0)) id = Block.Air;
             else if (id !== Block.Air && this.crimsonCarve(wx, y, wz, 1.8)) id = Block.Crimstone;
+            // 血腥祭坛:长廊尽头 3×3 猩红石台 + 中央萤石(未来放恶魔之心)
+            const alt = this.crimsonGeo.altar;
+            if (Math.abs(wx - alt[0]) <= 1 && Math.abs(wz - alt[2]) <= 1 && y === alt[1]) {
+              id = Block.Crimstone;
+            }
+            if (wx === alt[0] && wz === alt[2] && y === alt[1] + 1) id = Block.Glowstone;
           }
           data[idx(lx, y, lz)] = id;
         }

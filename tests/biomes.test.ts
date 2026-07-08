@@ -91,7 +91,7 @@ describe('Terraria 3D 生物群系', () => {
     expect(found).toBe(true);
   });
 
-  it('血腥区:血腥草地、浅层猩红石、入口洞穴凿空(无裂缝深谷)', () => {
+  it('血腥区:血腥草地、猩红石、之字长廊 + 祭坛 + 主腔(无裂缝深谷)', () => {
     const cc = gen.crimsonCenter;
     const cx = Math.round(cc.x / CS);
     const cz = Math.round(cc.z / CS);
@@ -115,7 +115,14 @@ describe('Terraria 3D 生物群系', () => {
         if (gen.crimsonCarve(cc.x + dx, y, cc.z + dz)) carved++;
       }
     }
-    expect(carved).toBeGreaterThan(12); // 竖井确实凿空
+    expect(carved).toBeGreaterThan(12); // 入口/长廊确实凿空
+    // 血腥祭坛:长廊尽头猩红石台上一颗萤石(未来放恶魔之心)
+    const acx = Math.floor(cc.x / CS);
+    const acz = Math.floor(cc.z / CS);
+    const cdata = gen.generateChunk(acx, acz);
+    const alx = cc.x - acx * CS;
+    const alz = cc.z - acz * CS;
+    expect(cdata[((surf - 28) * CS + alz) * CS + alx]).toBe(Block.Glowstone);
     // 血腥地不再有腐化式裂缝深谷
     expect(gen.chasmAt(cc.x, cc.z)).toBe(false);
   });
