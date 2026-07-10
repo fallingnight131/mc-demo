@@ -104,6 +104,11 @@ instead of growing `main.ts`; if the architecture doesn't fit, update `ARCHITECT
 then the code. Its §6 invariants (id space, save key, `__game` debug API, test import paths,
 determinism, perf budget) must never be broken.
 
+**Backend (accounts / cloud saves): read and follow `BACKEND.md`.** Node ≥ 23 + Hono +
+node:sqlite under `server/` (its own package; zero build step). Guest mode must always behave
+exactly like the pre-backend game — the game core never touches the network; networking lives
+only in boot/account modules. Its §7 invariants are as binding as ARCHITECTURE.md §6.
+
 Performance notes for a finite-but-tall world:
 
 * Chunked meshing with greedy meshing or face culling; only render chunks near the player.
