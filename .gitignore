@@ -5,3 +5,4 @@ scripts/items/
 examples/
 
 .DS_Store
+server/data/
