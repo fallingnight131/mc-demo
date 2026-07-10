@@ -1,5 +1,20 @@
 # 工作记忆(每轮必读,保持精炼;过期就删)
 
+## 后端(里程碑 53 起生效,基准文档 BACKEND.md)
+
+- **涉及登录/云存档/server/ 的改动以 `BACKEND.md` 为准**;技术栈:Hono +
+  node:sqlite,Node ≥23 原生跑 TS(server 零构建;**禁 enum/namespace/
+  构造器参数属性**,import 带 .ts 扩展名)。
+- 开发:`npm run server`(8787)+ `npm run dev`(5173,/api 已代理);
+  server 不在时游客模式照常(boot 1.5s 超时转本地)。
+- 关键不变量:游客键 `mc-demo-save-v1` 格式永不变;游戏内核禁 import
+  backend/fetch(网络只在 boot.ts / game/account.ts / ui/account.ts);
+  `?test` 默认游客零网络,账号 e2e 用 `?test&account=1`;API 字段只增。
+- 同步模型速记:服务端权威,本地是缓冲;`…:meta={rev,pending}`;
+  启动对账在 boot.ts(云无档→绑定本地;云更新→云为准+冲突备份);
+  游玩期 SaveManager.onSaved → 15s 防抖 PUT(baseRev)→ 409 提示下次启动对账。
+- verify 会自动拉起 API server(临时库);新增账号用例在文件尾部。
+
 ## 架构(里程碑 52 起生效)
 
 - **新功能必须按 `ARCHITECTURE.md` 的扩展点接入**,不要往 main.ts 加规则代码。
@@ -34,6 +49,8 @@
    flags 记击败;再做多部件(骷髅王式)。
 3. **NPC**(§4.5):对话/商店面板 + 入住房屋判定(纯函数可单测)。
 4. **大世界交互/世界事件**(§4.6):血月(spawner 换表+氛围变调)。
+5. **后端后续**(BACKEND.md §8):多存档位/多角色选择界面(slot 已留位)→
+   成就统计上报(事件总线现成)→ 公网部署硬化(HTTPS/备份/CSRF 令牌)。
 
 ## 踩坑备忘
 
