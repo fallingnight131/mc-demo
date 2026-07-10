@@ -97,6 +97,13 @@ Generation must be **structured and rule-driven**, not pure noise:
 * Three.js
 * Vite
 
+**Architecture: read and follow `ARCHITECTURE.md`.** It defines the layer model, the registries
+(items/weapons, block-use, panels, save sections, flags), and per-content playbooks for adding
+blocks / weapons / mobs / bosses / NPCs / UI. New systems must plug into those extension points
+instead of growing `main.ts`; if the architecture doesn't fit, update `ARCHITECTURE.md` first,
+then the code. Its §6 invariants (id space, save key, `__game` debug API, test import paths,
+determinism, perf budget) must never be broken.
+
 Performance notes for a finite-but-tall world:
 
 * Chunked meshing with greedy meshing or face culling; only render chunks near the player.
@@ -110,11 +117,13 @@ Performance notes for a finite-but-tall world:
 * Work autonomously. Do not stop to ask questions.
 * Fix errors automatically.
 * Test changes when possible (at minimum: build passes, game loads, player can move/dig/place).
-* Read and update `progress.md` in every loop.
-* Commit git in every loop with meaningful messages.
+* Read and update `skills/progress.md` in every loop.
+* Read and update `skills/memory.md` in every loop.
 * When changing world generation, always regenerate with a fixed test seed and visually sanity-check the result (screenshot or fly-through if possible).
-* When adding or modifying a model, take a snapshot of the new model and save it in the `shots/` folder. Verify that the model looks good and is suitable; if it is substandard or does not meet requirements, make the necessary adjustments to ensure the snapshot aligns with the specifications.
+* When adding or modifying models, environments, terrains, landscapes, buildings, etc., take a snapshot of the new model and save it in the `shots/` folder. Verify that the model looks good and is suitable; if it is substandard or does not meet requirements, make the necessary adjustments to ensure the snapshot aligns with the specifications.
 * After adding or modifying props or items, place the completed item icons into the "/items" folder; if an icon does not meet the requirements, modify it yourself to ensure compliance.
+* Once existing goals have been achieved, reasonably set new ones to advance the project toward becoming a full 3D version of Terraria.
+* Commit git in every loop with meaningful messages.
 
 ---
 
@@ -137,3 +146,4 @@ Work through these phases in order. Each phase should end in a playable, committ
 * **Phase 3 — Biomes**: Forest / Jungle / Corruption with distinct blocks, palettes, and terrain rules; rivers.
 * **Phase 4 — Landmarks**: World Tree, Floating Islands, Dungeon, Underworld structures, depth-based ores and loot chests.
 * **Phase 5 — Polish**: performance, visuals, ambience, bug-fixing, gameplay feel.
+* **Phase 6 — New Objectives**: Defining and updating the main progression path through iterative cycles; expanding gameplay mechanics; steering the game toward becoming a full 3D version of *Terraria*.
