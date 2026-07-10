@@ -11,6 +11,7 @@ import { EventBus } from './core/events';
 import { SaveManager } from './core/save';
 import { clockText, computeDayNight } from './daynight';
 import { FallingBlocks } from './falling';
+import { getAccount } from './game/account';
 import { Ambience, layerNameOf } from './game/ambience';
 import { buildCodexCategories } from './game/codex';
 import { Combat } from './game/combat';
@@ -32,6 +33,7 @@ import { Sound } from './sound';
 import { PLACEABLE } from './blocks';
 import { Tool } from './tools';
 import { isTouchDevice, TouchControls } from './touch';
+import { initAccountPane } from './ui/account';
 import { Panels } from './ui/panels';
 import { initSettings, loadSensitivity } from './ui/settings';
 import { World, type EditData } from './world';
@@ -57,7 +59,11 @@ const world = new World(mats.solidMat, mats.waterMat);
 scene.add(world.group);
 
 // --- 存档(分节注册,字段与历史存档 mc-demo-save-v1 一致) ---
-const save = new SaveManager('mc-demo-save-v1');
+// 存储键按身份隔离:游客 = 历史键,账号 = 按用户后缀;登录态的云对账
+// 已在 boot.ts 完成(胜者写入本地缓冲),这里照常同步读档(BACKEND.md §6)。
+const account = getAccount();
+const save = new SaveManager(account.storageKey);
+save.onSaved = (json) => account.onLocalSaved(json); // 登录态防抖推送云端
 save.read();
 save.register('edits', {
   save: () => world.serializeEdits(),
@@ -307,18 +313,27 @@ function saveGame(): void {
   save.saveNow();
   world.editsDirty = false;
 }
-window.addEventListener('beforeunload', saveGame);
+const onUnload = () => {
+  saveGame();
+  void account.flushNow(true); // keepalive:卸载后请求仍会完成
+};
+window.addEventListener('beforeunload', onUnload);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) saveGame();
+  if (document.hidden) onUnload();
 });
+account.onConflict = () =>
+  hud.toast('云端存档有更新(另一设备?),本机改动将在下次启动时对账');
+if (account.conflictNotice) {
+  hud.toast('云存档冲突:已采用云端版本,本机旧改动已备份');
+}
 
 // 清档重开:reset() 删档并阻断一切自动存档写回(防 reload 前的
-// visibilitychange 把旧状态原样写回,存档删了就是删了)
+// visibilitychange 把旧状态原样写回,存档删了就是删了);登录态连云档一起清
 document.getElementById('reset-save')!.addEventListener('click', (e) => {
   e.stopPropagation();
   save.reset();
-  window.removeEventListener('beforeunload', saveGame);
-  location.reload();
+  window.removeEventListener('beforeunload', onUnload);
+  void account.clearSave().finally(() => location.reload());
 });
 
 function setCreative(v: boolean): void {
@@ -344,6 +359,7 @@ initSettings({
     sensScale = v;
   },
 });
+initAccountPane(account, saveGame);
 
 const overlayEl = document.getElementById('overlay')!;
 overlayEl.addEventListener('click', () => engage());
@@ -559,6 +575,11 @@ if (new URLSearchParams(location.search).has('test')) {
     flags,
     projectiles,
     save: saveGame,
+    account: {
+      user: () => account.user,
+      storageKey: () => account.storageKey,
+      flush: () => account.flushNow(),
+    },
     setTime: (v: number) => ambience.setTime(v),
     ui: {
       hotbar: () => [...inventory.hotbar],

@@ -835,6 +835,71 @@
         color: #8fa4c0;
         margin: -4px 0 4px 27px;
       }
+      #account-pane {
+        text-align: left;
+        display: none;
+        margin: 0 auto 18px;
+        max-width: 340px;
+        font-size: 14px;
+        color: #d8e2f0;
+      }
+      #account-pane.open {
+        display: block;
+      }
+      #acc-status {
+        padding: 6px 2px 10px;
+        color: #9fd07f;
+      }
+      #account-pane input {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        margin: 6px 0;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid #3d4c66;
+        background: #16202f;
+        color: #e8eef8;
+        font-size: 14px;
+      }
+      #account-pane .acc-row {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0 4px;
+      }
+      #account-pane button {
+        flex: 1;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid #4a5c7a;
+        background: #24344d;
+        color: #e8eef8;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      #account-pane button:hover {
+        background: #2e4160;
+      }
+      #account-pane button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #acc-logout {
+        display: block;
+        width: 100%;
+      }
+      #account-pane .acc-note {
+        font-size: 12px;
+        color: #8fa4c0;
+        margin-top: 6px;
+        line-height: 1.5;
+      }
+      #acc-hint {
+        min-height: 18px;
+        margin-top: 8px;
+        font-size: 13px;
+        color: #f0b06a;
+      }
     </style>
   </head>
   <body>
@@ -844,6 +909,7 @@
         <div class="sub">Three.js 体素沙盒演示</div>
         <div class="menu-tabs">
           <button id="tab-settings" type="button">⚙ 设置</button>
+          <button id="tab-account" type="button">👤 账号</button>
           <button id="tab-tutorial" type="button" class="active">📖 教程</button>
         </div>
         <div id="settings-pane" class="pane">
@@ -860,6 +926,22 @@
           <button id="open-codex" type="button" class="codex-btn">
             📖 打开图鉴 · 方块 / 家具 / 工具武器 / 植被 / 生物
           </button>
+        </div>
+        <div id="account-pane" class="pane">
+          <div id="acc-status">游客模式 — 进度只存在本机浏览器</div>
+          <div id="acc-form">
+            <input id="acc-user" type="text" maxlength="24" placeholder="用户名(3-24 位字母/数字/汉字)" autocomplete="username" />
+            <input id="acc-pass" type="password" maxlength="72" placeholder="口令(至少 8 位)" autocomplete="current-password" />
+            <div class="acc-row">
+              <button id="acc-register" type="button">注册并绑定进度</button>
+              <button id="acc-login" type="button">登录</button>
+            </div>
+            <div class="acc-note">
+              注册/登录后进度存入云端,换设备可续玩;云端没有存档时,自动把当前本机进度绑定到账号。
+            </div>
+          </div>
+          <button id="acc-logout" type="button" style="display: none">登出(回到游客世界)</button>
+          <div id="acc-hint"></div>
         </div>
         <div id="tutorial-pane" class="pane open">
         <ul id="help-desktop">
@@ -925,6 +1007,6 @@
     <img id="hand" alt="" />
     <div id="hotbar"></div>
     <div id="debug"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/boot.ts"></script>
   </body>
 </html>

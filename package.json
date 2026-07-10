@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "server": "npm --prefix server run dev",
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {

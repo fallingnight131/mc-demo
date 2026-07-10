@@ -25,6 +25,8 @@ export class SaveManager {
   private blocked = false;
   /** 非世界编辑的改动(宝箱存取/旗标等)请求下一次周期存档 */
   dirty = false;
+  /** 落盘成功后的钩子(账号系统据此做云端推送;游客/无监听则无副作用) */
+  onSaved: ((json: string) => void) | null = null;
 
   constructor(
     private readonly key: string,
@@ -75,8 +77,10 @@ export class SaveManager {
     try {
       const out: Record<string, unknown> = {};
       for (const [key, s] of this.sections) out[key] = s.save();
-      this.storage.setItem(this.key, JSON.stringify(out));
+      const json = JSON.stringify(out);
+      this.storage.setItem(this.key, json);
       this.dirty = false;
+      this.onSaved?.(json);
     } catch {
       // 隐私模式等存储不可用:静默跳过
     }

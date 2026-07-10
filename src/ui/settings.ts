@@ -11,25 +11,22 @@ export interface SettingsDeps {
 
 /** 接线设置面板;点击一律 stopPropagation 以免落入"开始游戏" */
 export function initSettings(deps: SettingsDeps): void {
-  const tabSettings = document.getElementById('tab-settings')!;
-  const tabTutorial = document.getElementById('tab-tutorial')!;
-  const paneSettings = document.getElementById('settings-pane')!;
-  const paneTutorial = document.getElementById('tutorial-pane')!;
-  const showPane = (which: 'settings' | 'tutorial') => {
-    paneSettings.classList.toggle('open', which === 'settings');
-    paneTutorial.classList.toggle('open', which === 'tutorial');
-    tabSettings.classList.toggle('active', which === 'settings');
-    tabTutorial.classList.toggle('active', which === 'tutorial');
-  };
-  tabSettings.addEventListener('click', (e) => {
-    e.stopPropagation();
-    showPane('settings');
-  });
-  tabTutorial.addEventListener('click', (e) => {
-    e.stopPropagation();
-    showPane('tutorial');
-  });
-  paneSettings.addEventListener('click', (e) => e.stopPropagation());
+  // 页签:设置 / 账号 / 教程(面板 DOM 见 index.html)
+  const tabs = [
+    { tab: document.getElementById('tab-settings')!, pane: document.getElementById('settings-pane')! },
+    { tab: document.getElementById('tab-account')!, pane: document.getElementById('account-pane')! },
+    { tab: document.getElementById('tab-tutorial')!, pane: document.getElementById('tutorial-pane')! },
+  ];
+  for (const t of tabs) {
+    t.tab.addEventListener('click', (e) => {
+      e.stopPropagation();
+      for (const o of tabs) {
+        o.pane.classList.toggle('open', o === t);
+        o.tab.classList.toggle('active', o === t);
+      }
+    });
+    if (t.pane.id !== 'tutorial-pane') t.pane.addEventListener('click', (e) => e.stopPropagation());
+  }
 
   const optCreative = document.getElementById('opt-creative') as HTMLInputElement;
   optCreative.checked = deps.getCreative();

@@ -1,7 +1,11 @@
 // 运行时验证:无头 Chrome 实际游玩 —— 移动 / 跳跃 / 挖掘 / 放置 / 截图
-// 用法:node scripts/verify.mjs(需要 dev 服务器已在 5173 端口运行)
+// 用法:node scripts/verify.mjs(需要 dev 服务器已在 5173 端口运行;
+// API server(8787)不在时自动以临时数据库拉起,供账号云存档链路用例)
+import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const OUT = 'scripts/shots';
 fs.mkdirSync(OUT, { recursive: true });
@@ -11,6 +15,27 @@ const check = (name, ok, detail = '') => {
   results.push({ name, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  ${detail}`);
 };
+
+// --- API server(账号/云存档):已有则复用(用户名带时间戳不冲突),否则临时库拉起 ---
+const apiHealthy = async () => {
+  try {
+    return (await fetch('http://localhost:8787/api/health')).ok;
+  } catch {
+    return false;
+  }
+};
+let apiProc = null;
+if (!(await apiHealthy())) {
+  const dbPath = path.join(os.tmpdir(), `mc-demo-verify-${Date.now()}.db`);
+  apiProc = spawn(
+    process.execPath,
+    ['--disable-warning=ExperimentalWarning', 'server/src/index.ts'],
+    { env: { ...process.env, DB_PATH: dbPath, PORT: '8787' }, stdio: 'ignore' },
+  );
+  for (let i = 0; i < 25 && !(await apiHealthy()); i++) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
 
 const errors = [];
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -2342,9 +2367,109 @@ check(
   `UI ${touchUI},摇杆移动 ${tMoved.toFixed(1)} 格,视角 Δ${Math.abs(yaw1 - yaw0).toFixed(2)},跳起 +${(ty1 - ty0).toFixed(2)} 格`,
 );
 
+// --- 里程碑 53:账号 + 云存档链路(独立浏览器上下文;?test&account=1 启用网络) ---
+if (await apiHealthy()) {
+  const acc = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const accErrors = [];
+  acc.on('pageerror', (e) => accErrors.push(String(e)));
+  const uname = 'e2e_' + Date.now().toString(36);
+  await acc.goto('http://localhost:5173/?test&account=1', { waitUntil: 'load' });
+  await acc.evaluate(() => localStorage.clear());
+  await acc.reload({ waitUntil: 'load' });
+  await acc.waitForSelector('canvas.game', { timeout: 15000 });
+  await acc.waitForTimeout(2000);
+
+  // 标记方块:出生点上空悬空砖(id 19),编辑入档作为"进度"指纹
+  const mark = (n) =>
+    acc.evaluate((k) => {
+      const g = window.__game;
+      const s = g.spawn;
+      g.world.setBlock(Math.floor(s.x) + 3 + k, Math.floor(s.y) + 6, Math.floor(s.z), 19);
+      g.save();
+    }, n);
+  const readMark = (n) =>
+    acc.evaluate((k) => {
+      const g = window.__game;
+      const s = g.spawn;
+      return g.world.getBlock(Math.floor(s.x) + 3 + k, Math.floor(s.y) + 6, Math.floor(s.z));
+    }, n);
+
+  await mark(0); // 游客进度
+  // 注册(UI 全链路):账号页签 → 填表 → 注册并绑定进度 → 自动整页刷新
+  // (测试模式 forceLock 隐藏了遮罩,强制显示遮罩 + 账号页)
+  const showAccountPane = () =>
+    acc.evaluate(() => {
+      document.getElementById('overlay').classList.remove('hidden');
+      document.getElementById('account-pane').classList.add('open');
+      document.getElementById('tutorial-pane').classList.remove('open');
+    });
+  await showAccountPane();
+  await acc.fill('#acc-user', uname);
+  await acc.fill('#acc-pass', 'password123');
+  await Promise.all([
+    acc.waitForNavigation({ waitUntil: 'load', timeout: 15000 }),
+    acc.click('#acc-register'),
+  ]);
+  await acc.waitForSelector('canvas.game', { timeout: 15000 });
+  await acc.waitForTimeout(2000);
+  const afterReg = await acc.evaluate(() => ({
+    user: window.__game.account.user()?.username ?? null,
+    key: window.__game.account.storageKey(),
+  }));
+  const markAfterReg = await readMark(0);
+  check(
+    '账号:注册并绑定游客进度',
+    afterReg.user === uname && afterReg.key.includes(':u') && markAfterReg === 19,
+    `登录为 ${afterReg.user},存储键 ${afterReg.key},游客标记砖保留 ${markAfterReg === 19}`,
+  );
+
+  // 第二个标记 → 冲刷上云 → 清空本地 → 重载:会话 Cookie 仍在,世界从云端恢复
+  await mark(1);
+  await acc.evaluate(() => window.__game.account.flush());
+  await acc.evaluate(() => localStorage.clear());
+  await acc.reload({ waitUntil: 'load' });
+  await acc.waitForSelector('canvas.game', { timeout: 15000 });
+  await acc.waitForTimeout(2000);
+  const cloud = {
+    user: await acc.evaluate(() => window.__game.account.user()?.username ?? null),
+    m0: await readMark(0),
+    m1: await readMark(1),
+  };
+  check(
+    '账号:清空本地后从云端恢复进度',
+    cloud.user === uname && cloud.m0 === 19 && cloud.m1 === 19,
+    `重载后登录 ${cloud.user},两处标记砖 ${cloud.m0}/${cloud.m1}(应 19/19)`,
+  );
+
+  // 登出:回到游客世界 —— 账号世界的标记 1 不在,游客自己的标记 0 还在(进度相互独立)
+  await showAccountPane();
+  await Promise.all([
+    acc.waitForNavigation({ waitUntil: 'load', timeout: 15000 }),
+    acc.click('#acc-logout'),
+  ]);
+  await acc.waitForSelector('canvas.game', { timeout: 15000 });
+  await acc.waitForTimeout(2000);
+  const guest = {
+    user: await acc.evaluate(() => window.__game.account.user()?.username ?? null),
+    key: await acc.evaluate(() => window.__game.account.storageKey()),
+    m0: await readMark(0),
+    m1: await readMark(1),
+  };
+  check(
+    '账号:登出回游客世界(进度相互独立)',
+    guest.user === null && guest.key === 'mc-demo-save-v1' && guest.m1 !== 19,
+    `user=${guest.user},键 ${guest.key},账号标记已不在 ${guest.m1 !== 19}(游客标记 ${guest.m0 === 19 ? '保留' : '无'})`,
+  );
+  check('账号:链路无页面错误', accErrors.length === 0, accErrors.join(' | '));
+  await acc.close();
+} else {
+  check('账号:API server 可用', false, '8787 未就绪(verify 应能自动拉起 server/src/index.ts)');
+}
+
 check('无控制台错误', errors.length === 0, errors.join(' | '));
 
 await browser.close();
+apiProc?.kill();
 const failed = results.filter((r) => !r.ok).length;
 console.log(failed === 0 ? '\n全部通过 ✓' : `\n${failed} 项失败 ✗`);
 process.exit(failed === 0 ? 0 : 1);
