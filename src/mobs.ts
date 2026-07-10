@@ -463,9 +463,10 @@ export class Mobs {
     return best;
   }
 
-  /** 攻击:扣血、红闪、朝攻击方向击退并逃窜,归零即死(剑等武器伤害更高) */
-  hurt(hit: MobHit, dir: THREE.Vector3, dmg = 1): void {
-    this.damage(hit.mob, dmg, dir.x, dir.z, 6, 4.4);
+  /** 攻击:扣血、红闪、朝攻击方向击退并逃窜,归零即死。
+   *  伤害与击退由调用方按手持武器的 WeaponDef 传入;返回剩余血量(0 = 已死)。 */
+  hurt(hit: MobHit, dir: THREE.Vector3, dmg = 1, knock = 6, knockUp = 4.4): number {
+    return this.damage(hit.mob, dmg, dir.x, dir.z, knock, knockUp);
   }
 
   /** 爆炸波及:距离决定伤害,从爆心向外击退 */
@@ -489,7 +490,7 @@ export class Mobs {
     dirZ: number,
     knock: number,
     knockUp: number,
-  ): void {
+  ): number {
     m.hp -= dmg;
     m.flash = 0.22;
     const b = m.body;
@@ -507,7 +508,9 @@ export class Mobs {
       this.onDeath?.(m.kind, b.pos.x, b.pos.y + 0.4, b.pos.z);
       const i = this.list.indexOf(m);
       if (i >= 0) this.removeAt(i);
+      return 0;
     }
+    return m.hp;
   }
 
   setBrightness(bright: number): void {
