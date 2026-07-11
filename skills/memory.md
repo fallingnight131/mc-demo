@@ -52,14 +52,24 @@
 5. **后端后续**(BACKEND.md §8):多存档位/多角色选择界面(slot 已留位)→
    成就统计上报(事件总线现成)→ 公网部署硬化(HTTPS/备份/CSRF 令牌)。
 
-## 库存语义(里程碑 54 起)
+## 库存语义(里程碑 54/55 起)
 
-- **快捷栏是引用,背包 stash 才是所有权**:生存放置消耗 `inventory.consume`、
-  未拥有拒绝(创造豁免,`isCreative` 注入);徽章 = 现有数(方块类才显示);
-  拾取有 `drops.canPickup` 满包守卫;宝箱被炸走 `spillChest` 溢出掉落物。
+- **快捷栏是背包的镜像**:生存放置消耗 `inventory.consume`、未拥有拒绝;
+  现有数归零的槽位由 `syncHotbarOwnership` 清为空手(放置后/宝箱存取后/
+  读档后);徽章 = 现有数(方块类才显示);拾取有 `drops.canPickup` 满包
+  守卫;宝箱被炸走 `spillChest` 溢出掉落物。
+- **容量规格(泰拉 PC)**:背包 50 格 / 宝箱 40 格 / 单堆 STACK_MAX=999;
+  addToSlots 补堆→开新堆→返余量,moveStack 支持部分转移。只增不减
+  (读档兼容),别动这些常量的方向。
+- **创造模式 = 快照隔离**:开启时 `setCreativeMode(true)` 快照
+  stash/快捷栏/宝箱(存档分节 creativeBackup),E 面板 = catalogItems()
+  全图鉴,背包冻结(拾取消散);关闭整体恢复。改创造相关逻辑必须保住
+  "退出无痕"不变量。
 - 改动这三系统时:E 面板槽位的 **title 必须保持纯名称**(e2e 选择器
   `[title="南瓜"]` 依赖),数量走 HotbarSlot.count 由 HUD 渲染 ×N。
 - 快捷栏存档校验按物品注册表(itemDef 存在即合法),不要收窄回 PLACEABLE。
+- e2e 想要"全新世界"必须点 `#reset-save`(save.reset 阻断写回);
+  裸 localStorage.clear()+reload 会被 beforeunload 自动存档写回。
 
 ## 踩坑备忘
 

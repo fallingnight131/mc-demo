@@ -2440,7 +2440,8 @@ check(
   `世界中丛林草 ${deniedCount}(应 0),拥有 ${deniedOwned}`,
 );
 
-// 收集类(非经典可放置)方块装进快捷栏 → 存档重载不被重置
+// 收集类(非经典可放置)方块装进快捷栏 → 存档重载:整栏不被校验重置,
+// 但未拥有的物品(丛林草 owned=0)按所有权规则清为空手(里程碑 55)
 await page.evaluate(() => {
   window.__game.ui.setHotbar([38, 102, 101, 0, 0, 0, 0, 0, 0, 0]);
   window.__game.save();
@@ -2450,9 +2451,9 @@ await page.waitForSelector('canvas.game', { timeout: 15000 });
 await page.waitForTimeout(1500);
 const savedBar = await page.evaluate(() => window.__game.ui.hotbar());
 check(
-  '快捷栏:收集类方块过存档不被重置',
-  savedBar[0] === 38 && savedBar[1] === 102 && savedBar[2] === 101,
-  `重载后 [${savedBar.slice(0, 3).join(',')}](应 38,102,101)`,
+  '快捷栏过存档:布局保留 + 未拥有槽清空',
+  savedBar[0] === 0 && savedBar[1] === 102 && savedBar[2] === 101,
+  `重载后 [${savedBar.slice(0, 3).join(',')}](应 0,102,101:38 未拥有被清,栏未整体重置)`,
 );
 
 // TNT 炸宝箱:内容物(含未开箱的战利品)溢出为掉落物,存储清除
@@ -2485,6 +2486,120 @@ check(
   'TNT 炸宝箱:内容物溢出为掉落物',
   spillSetup.stored >= 1 && spillAfter.chestGone && spillAfter.dropsMore && spillAfter.storeCleared,
   `箱内 ${spillSetup.stored} 件,炸后 箱没了 ${spillAfter.chestGone},掉落物增加 ${spillAfter.dropsMore},存储清除 ${spillAfter.storeCleared}`,
+);
+
+// --- 里程碑 55:物品栏所有权同步(耗尽即空)+ 创造模式全图鉴与快照恢复 ---
+// 全新世界:背包只有剑/镐/斧,便于把某物品消耗到 0。
+// 注意不能裸 localStorage.clear()+reload —— beforeunload 自动存档会把内存态写回;
+// 走游戏自己的「清除存档重开」(save.reset 阻断写回)。
+await Promise.all([
+  page.waitForNavigation({ waitUntil: 'load', timeout: 15000 }),
+  page.evaluate(() => document.getElementById('reset-save').click()),
+]);
+await page.waitForSelector('canvas.game', { timeout: 15000 });
+await page.waitForTimeout(2000);
+await page.evaluate(() => {
+  const g = window.__game;
+  g.mobs.setAutoSpawn(false);
+  g.mobs.clear();
+  // 脚边撒 2 个泥土掉落物 → 磁吸拾取(唯一的泥土来源,owned 恰为 2)
+  const p = g.player.pos;
+  g.drops.spawn(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z), 2);
+  g.drops.spawn(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z), 2);
+});
+await page.waitForTimeout(1200); // 等 0.5s 拾取延迟 + 磁吸
+const dirtGot = await page.evaluate(() => window.__game.ui.owned(2));
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) - 10;
+  const z = Math.floor(s.z) - 4;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.65;
+  g.ui.setHotbar([2, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+});
+await page.keyboard.press('Digit1');
+await page.waitForTimeout(150);
+const dirt0 = await countNear(2); // 泥土是自然方块:按放置前后增量断言
+for (let i = 0; i < 3; i++) {
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(260); // 第三次点按时已空手,应放不出东西
+}
+const depleted = await page.evaluate(() => ({
+  owned: window.__game.ui.owned(2),
+  bar0: window.__game.ui.hotbar()[0],
+}));
+const dirtPlaced = (await countNear(2)) - dirt0;
+check(
+  '物品栏所有权:放完即空手,不再显示未拥有物',
+  dirtGot === 2 && depleted.owned === 0 && depleted.bar0 === 0 && dirtPlaced === 2,
+  `拾得 ${dirtGot},净放置 ${dirtPlaced}(第三次点按无效),放完 owned=${depleted.owned},槽位=${depleted.bar0}(应空手 0)`,
+);
+
+// 创造模式:背包变全图鉴无限;退出后恢复进入前的背包/快捷栏
+await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  g.drops.spawn(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z), 2); // 再拾 1 个泥土当"进入前状态"
+});
+await page.waitForTimeout(1100);
+await page.evaluate(() => window.__game.ui.setHotbar([2, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+const preCreative = await page.evaluate(() => ({
+  owned: window.__game.ui.owned(2),
+  bar0: window.__game.ui.hotbar()[0],
+}));
+await page.evaluate(() => window.__game.setCreative(true));
+await page.waitForTimeout(150);
+await page.keyboard.press('KeyE'); // 创造背包 = 全图鉴调色板
+await page.waitForTimeout(250);
+const creativeCatalog = await page.evaluate(
+  () => document.querySelectorAll('#inv-grid .inv-slot').length,
+);
+await page.click('#inv-grid .inv-slot[title="萤石"]'); // 点选未拥有的萤石(面板自动关闭)
+await page.waitForTimeout(250);
+await page.evaluate(() => {
+  // 转向干净的一侧、俯角放陡(落点 ~1.3 格,必在 countNear ±3 区域内)
+  window.__game.player.yaw = Math.PI / 2;
+  window.__game.player.pitch = -0.95;
+});
+await page.mouse.down(); // 创造放置:不消耗、不污染背包
+await page.mouse.up();
+await page.waitForTimeout(260);
+const creativePlaced = await countNear(34);
+const creativeState = await page.evaluate(() => ({
+  glowOwned: window.__game.ui.owned(34),
+  bar0: window.__game.ui.hotbar()[0],
+}));
+await page.evaluate(() => window.__game.setCreative(false));
+await page.waitForTimeout(200);
+const postCreative = await page.evaluate(() => ({
+  owned: window.__game.ui.owned(2),
+  glowOwned: window.__game.ui.owned(34),
+  bar0: window.__game.ui.hotbar()[0],
+}));
+await page.keyboard.press('KeyE'); // 生存背包恢复为"拥有的物品"
+await page.waitForTimeout(250);
+const survivalBag = await page.evaluate(
+  () => document.querySelectorAll('#inv-grid .inv-slot').length,
+);
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(150);
+check(
+  '创造模式:全图鉴无限背包,退出恢复原状',
+  creativeCatalog > 40 &&
+    creativeState.bar0 === 34 &&
+    creativePlaced === 1 &&
+    creativeState.glowOwned === 0 &&
+    postCreative.bar0 === preCreative.bar0 &&
+    postCreative.owned === preCreative.owned &&
+    postCreative.glowOwned === 0 &&
+    survivalBag === 4,
+  `创造图鉴 ${creativeCatalog} 项(>40),持萤石放置 ${creativePlaced} 块且 owned=${creativeState.glowOwned};` +
+    `退出后槽位 ${postCreative.bar0}=进入前 ${preCreative.bar0},泥土 ${postCreative.owned}=进入前 ${preCreative.owned},生存背包 ${survivalBag} 项(剑镐斧+泥土)`,
 );
 
 // --- 里程碑 53:账号 + 云存档链路(独立浏览器上下文;?test&account=1 启用网络) ---

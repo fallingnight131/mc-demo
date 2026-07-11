@@ -14,7 +14,14 @@ import {
   serializeSlots,
   type Slot,
 } from '../chest';
-import { inventoryItems, itemDef, itemIcon, itemName, type IconSource } from '../content/items';
+import {
+  catalogItems,
+  inventoryItems,
+  itemDef,
+  itemIcon,
+  itemName,
+  type IconSource,
+} from '../content/items';
 import type { EventBus } from '../core/events';
 import type { SaveManager } from '../core/save';
 import type { HUD, HotbarSlot } from '../hud';
@@ -23,10 +30,18 @@ import { Tool } from '../tools';
 import type { World } from '../world';
 
 export const HOTBAR_SIZE = 10;
-export const STASH_SIZE = 40;
-export const CHEST_SIZE = 20;
+// 泰拉瑞亚 PC 规格:背包 50 格 / 宝箱 40 格,每堆上限 STACK_MAX(chest.ts)
+export const STASH_SIZE = 50;
+export const CHEST_SIZE = 40;
 // 初始快捷栏:空手起步,仅带剑/镐/斧三件工具(里程碑 41/51)
 const DEFAULT_HOTBAR = [Tool.Sword, Tool.Pickaxe, Tool.Axe, 0, 0, 0, 0, 0, 0, 0];
+
+/** 创造模式进入时的完整快照(退出时恢复,序列化形态随存档保存) */
+interface CreativeBackup {
+  stash: Array<[number, number, number]>;
+  hotbar: number[];
+  chests: Record<string, Array<[number, number, number]>>;
+}
 
 export class Inventory {
   readonly hotbar: number[] = [...DEFAULT_HOTBAR];
@@ -42,6 +57,8 @@ export class Inventory {
   onInventoryPick: (() => void) | null = null;
   /** 创造模式豁免所有权(main 注入) */
   isCreative: () => boolean = () => false;
+  /** 创造模式进入前的快照;非空即"创造隔离生效中"(随存档保存) */
+  private creativeBackup: CreativeBackup | null = null;
 
   constructor(
     private readonly hud: HUD,
@@ -65,25 +82,46 @@ export class Inventory {
     return countInSlots(this.stash, id);
   }
 
-  /** 背包还能收纳该物品吗(拾取满包守卫,drops.canPickup 接这里) */
+  /** 背包还能收纳该物品吗(拾取满包守卫;创造无限,恒可) */
   canFit(id: number): boolean {
-    return canAddToSlots(this.stash, id);
+    return this.isCreative() || canAddToSlots(this.stash, id);
   }
 
   /** 生存放置消耗一个;返回是否成功(创造模式恒真且不消耗) */
   consume(id: number): boolean {
     if (this.isCreative()) return true;
     if (removeFromSlots(this.stash, id, 1) < 1) return false;
+    this.syncHotbarOwnership(); // 耗尽的物品从物品栏消失
     this.refreshBadges();
     if (this.openChestKey) this.refreshChestUI(); // 双栏背包侧数量同步
     return true;
   }
 
+  /** 物品栏只显示背包里真有的东西:现有数归零的槽位清空(创造不清) */
+  private syncHotbarOwnership(): void {
+    if (this.isCreative()) return;
+    let changed = false;
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
+      const id = this.hotbar[i];
+      if (id !== Block.Air && this.ownedCount(id) <= 0) {
+        this.hotbar[i] = Block.Air;
+        changed = true;
+      }
+    }
+    if (changed) this.refreshHotbar();
+  }
+
+  /** 载入存档 / 恢复快照后的对账入口(main 在 registerSave 之后调用) */
+  syncOwnership(): void {
+    this.syncHotbarOwnership();
+  }
+
   /** 全部槽位徽章 = 该物品现有数(方块类才显示 —— 它是会被放置消耗的余量;
-   *  工具/武器不堆叠不消耗,不显示徽章)。同 id 出现在多格也全部同步。 */
+   *  工具/武器不堆叠不消耗,不显示;创造模式无限,全部不显示)。 */
   refreshBadges(): void {
+    const creative = this.isCreative();
     this.hotbar.forEach((id, i) => {
-      const isBlock = id !== Block.Air && itemDef(id)?.kind === 'block';
+      const isBlock = !creative && id !== Block.Air && itemDef(id)?.kind === 'block';
       this.hud.setSlotCount(i, isBlock ? this.ownedCount(id) : 0);
     });
   }
@@ -134,8 +172,10 @@ export class Inventory {
   }
 
   /** 拾取:入背包 + 计数 + 徽章(宝箱开着则同步重绘)。
-   *  满包时 drops 的 canPickup 守卫会拦在前面,这里兜底不虚增计数。 */
+   *  满包时 drops 的 canPickup 守卫会拦在前面,这里兜底不虚增计数。
+   *  创造模式:背包冻结(退出后要恢复原状),掉落物直接消散不入包。 */
   pickup(id: number): boolean {
+    if (this.isCreative()) return true;
     if (addToSlots(this.stash, id, 1) > 0) return false; // 背包满:拒收
     this.stats.pickups++;
     this.stats.counts[id] = (this.stats.counts[id] ?? 0) + 1;
@@ -145,18 +185,19 @@ export class Inventory {
     return true;
   }
 
-  /** 背包面板(E):只展示拥有的物品(带数量),点选装入当前槽位 */
+  /** 背包面板(E):生存 = 拥有的物品(带数量);创造 = 全图鉴调色板(无限) */
   refreshInventory(): void {
-    const owned = this.stash.filter((s): s is NonNullable<Slot> => s !== null);
-    this.hud.buildInventory(
-      // count 交给 HUD 显示 ×N;name/title 保持纯名称
-      owned.map((s) => ({ ...this.slotFor(s.id), count: s.count })),
-      (id) => {
-        this.assign(id);
-        this.hud.toast(`${itemName(id)} → 槽位 ${(this.selectedSlot + 1) % 10}`);
-        this.onInventoryPick?.();
-      },
-    );
+    const items = this.isCreative()
+      ? catalogItems().map((id) => this.slotFor(id))
+      : this.stash
+          .filter((s): s is NonNullable<Slot> => s !== null)
+          // count 交给 HUD 显示 ×N;name/title 保持纯名称
+          .map((s) => ({ ...this.slotFor(s.id), count: s.count }));
+    this.hud.buildInventory(items, (id) => {
+      this.assign(id);
+      this.hud.toast(`${itemName(id)} → 槽位 ${(this.selectedSlot + 1) % 10}`);
+      this.onInventoryPick?.();
+    });
   }
 
   /** 取宝箱存储;首次访问按所在地标的战利品表生成(开箱与被炸溢出共用) */
@@ -207,10 +248,44 @@ export class Inventory {
         if (side === 'chest') moveStack(slots, i, this.stash);
         else moveStack(this.stash, i, slots);
         this.refreshChestUI();
+        this.syncHotbarOwnership(); // 全部存进宝箱的物品从物品栏消失
         this.refreshBadges(); // 存取改变拥有数,快捷栏徽章同步
         this.save.markDirty(); // 周期存档持久化宝箱/背包
       },
     );
+  }
+
+  /**
+   * 创造模式开关(main 的 setCreative 调用;isCreative 已先行翻转):
+   * 开 → 快照 stash/快捷栏/全部宝箱,背包变全图鉴无限(类 MC 创造);
+   * 关 → 整体恢复快照,回到进入创造之前的状态(创造期间的物品操作不落档)。
+   */
+  setCreativeMode(on: boolean): void {
+    if (on) {
+      if (!this.creativeBackup) {
+        this.creativeBackup = {
+          stash: serializeSlots(this.stash),
+          hotbar: [...this.hotbar],
+          chests: Object.fromEntries(
+            [...this.chestStore].map(([k, v]) => [k, serializeSlots(v)]),
+          ),
+        };
+      }
+    } else if (this.creativeBackup) {
+      const b = this.creativeBackup;
+      this.creativeBackup = null;
+      this.stash.splice(0, this.stash.length, ...deserializeSlots(STASH_SIZE, b.stash));
+      for (let i = 0; i < HOTBAR_SIZE; i++) this.hotbar[i] = b.hotbar[i] ?? Block.Air;
+      this.chestStore.clear();
+      for (const [k, v] of Object.entries(b.chests)) {
+        this.chestStore.set(k, deserializeSlots(CHEST_SIZE, v));
+      }
+      this.syncHotbarOwnership(); // 快照本身应自洽,兜底再对一次账
+      if (this.openChestKey) this.refreshChestUI();
+    }
+    this.refreshHotbar();
+    this.refreshInventory();
+    this.save.markDirty();
   }
 
   /** 调试:装配任意快捷栏布局(e2e 用) */
@@ -268,6 +343,25 @@ export class Inventory {
         if (!d || typeof d !== 'object') return;
         for (const [k, v] of Object.entries(d as Record<string, unknown>)) {
           this.chestStore.set(k, deserializeSlots(CHEST_SIZE, v));
+        }
+      },
+    });
+    // 创造模式的进入前快照:创造中存档/读档也能在退出时恢复原状
+    this.save.register('creativeBackup', {
+      save: () => this.creativeBackup,
+      load: (d) => {
+        if (
+          d &&
+          typeof d === 'object' &&
+          Array.isArray((d as CreativeBackup).stash) &&
+          Array.isArray((d as CreativeBackup).hotbar)
+        ) {
+          const b = d as CreativeBackup;
+          this.creativeBackup = {
+            stash: b.stash,
+            hotbar: b.hotbar,
+            chests: b.chests && typeof b.chests === 'object' ? b.chests : {},
+          };
         }
       },
     });

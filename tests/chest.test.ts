@@ -63,6 +63,32 @@ describe('宝箱/背包存储', () => {
     addToSlots(s, 6, 1);
     expect(canAddToSlots(s, 9)).toBe(false); // 满且无同 id
     expect(canAddToSlots(s, 5)).toBe(true); // 可并入同 id 堆
+    expect(canAddToSlots(s, 5, 1)).toBe(false); // 同 id 堆已到上限也拒收
+  });
+
+  it('堆叠上限:补满旧堆→开新堆→槽尽返余量;超大旧档读入被夹到上限', () => {
+    const s = makeSlots(2);
+    expect(addToSlots(s, 5, 1200, 999)).toBe(0); // 999 + 201 两堆
+    expect(s[0]).toEqual({ id: 5, count: 999 });
+    expect(s[1]).toEqual({ id: 5, count: 201 });
+    expect(addToSlots(s, 5, 1000, 999)).toBe(202); // 只补得下 798
+    expect(s[1]).toEqual({ id: 5, count: 999 });
+    expect(countInSlots(s, 5)).toBe(1998);
+    // 旧档超大堆:反序列化夹到 999
+    const back = deserializeSlots(1, [[0, 7, 5000]]);
+    expect(back[0]).toEqual({ id: 7, count: 999 });
+  });
+
+  it('moveStack 部分转移:目标只装得下一部分时,余量留在原槽', () => {
+    const a = makeSlots(1);
+    const b = makeSlots(1);
+    addToSlots(a, 5, 500, 999);
+    addToSlots(b, 5, 700, 999);
+    expect(moveStack(a, 0, b, 999)).toBe(true); // 只能并入 299
+    expect(b[0]).toEqual({ id: 5, count: 999 });
+    expect(a[0]).toEqual({ id: 5, count: 201 }); // 余量留在原槽
+    expect(moveStack(a, 0, b, 999)).toBe(false); // 目标满:原地不动
+    expect(a[0]).toEqual({ id: 5, count: 201 });
   });
 
   it('序列化往返保真(稀疏),非法数据被过滤', () => {

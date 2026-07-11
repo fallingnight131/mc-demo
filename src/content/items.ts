@@ -3,7 +3,7 @@
 // 规则代码(战斗/挖掘/交互/图鉴/HUD)只认这里的字段,不认具体 id ——
 // 加一件武器 = 注册一条数据 + 图标,战斗系统零改动。
 // 纯数据模块:不触碰 DOM / Three.js,可在 vitest 裸测;图标解析见 itemIcon()。
-import { Block, BLOCK_DEFS, PLACEABLE } from '../blocks';
+import { baseBlock, Block, BLOCK_DEFS, PLACEABLE } from '../blocks';
 import { materialOf } from '../sound';
 import { Tool, TOOL_DEFS } from '../tools';
 
@@ -161,6 +161,11 @@ export function miningBoost(itemId: number, blockId: number): number {
 /** 可放入背包/快捷栏的全部物品 id(可放置方块 + 工具武器) */
 export function inventoryItems(): number[] {
   return [...PLACEABLE, ...[...defs.keys()].filter((id) => id >= 100).sort((a, b) => a - b)];
+}
+
+/** 创造模式的"全图鉴"目录:全部已注册物品(方块去掉朝向变体 + 工具武器) */
+export function catalogItems(): number[] {
+  return [...defs.keys()].filter((id) => id >= 100 || baseBlock(id) === id).sort((a, b) => a - b);
 }
 
 /** 物品图标(注入 GameTextures 解析;空手为透明图) */

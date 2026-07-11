@@ -168,6 +168,9 @@ save.register('player', {
 });
 inventory.refreshHotbar();
 inventory.refreshInventory();
+// 续档进创造:确保进入前快照存在(老档缺则现在补拍)+ 全图鉴面板
+if (player.creative) inventory.setCreativeMode(true);
+inventory.syncOwnership(); // 物品栏只显示背包里真有的东西(创造内部跳过)
 
 const combat = new Combat({
   player,
@@ -356,10 +359,12 @@ document.getElementById('reset-save')!.addEventListener('click', (e) => {
 });
 
 function setCreative(v: boolean): void {
+  if (v === player.creative) return;
   player.creative = v;
+  inventory.setCreativeMode(v); // 开:快照+全图鉴无限背包;关:恢复进入前状态
   (document.getElementById('opt-creative') as HTMLInputElement).checked = v;
-  if (v) hud.toast('创造模式:飞行观察(空格升 / Shift 降)');
-  else hud.toast('生存模式');
+  if (v) hud.toast('创造模式:全图鉴背包 · 飞行观察(空格升 / Shift 降)');
+  else hud.toast('生存模式:背包已恢复到进入创造前的状态');
   saveGame();
 }
 
