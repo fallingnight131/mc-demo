@@ -48,6 +48,10 @@ export interface InteractDeps {
   onSwing(): void;
   /** 视线方向(view 提供) */
   lookDir(out: THREE.Vector3): THREE.Vector3;
+  /** 创造模式豁免放置的所有权与消耗 */
+  isCreative(): boolean;
+  /** 放置被拒(未拥有该方块)的反馈,main 接 hud.toast */
+  onDenied(itemName: string): void;
 }
 
 export class Interact {
@@ -170,7 +174,13 @@ export class Interact {
     if (!hit) return;
     const { world, player, sound, events, inventory } = this.deps;
     const id = inventory.heldId();
-    if (itemDef(id)?.kind !== 'block') return; // 工具/武器与空手都不放置方块
+    const def = itemDef(id);
+    if (def?.kind !== 'block') return; // 工具/武器与空手都不放置方块
+    // 所有权:生存模式必须背包里真有这块(放置会消耗);创造豁免
+    if (!this.deps.isCreative() && inventory.ownedCount(id) <= 0) {
+      this.deps.onDenied(def.name);
+      return;
+    }
     const tx = hit.x + hit.nx;
     const ty = hit.y + hit.ny;
     const tz = hit.z + hit.nz;
@@ -183,6 +193,7 @@ export class Interact {
     // 南瓜按放置视角转脸朝向玩家
     const placed = id === Block.Pumpkin ? pumpkinVariant(player.yaw) : id;
     world.setBlock(tx, ty, tz, placed);
+    inventory.consume(id); // 生存扣一个(徽章随之刷新),创造内部直接放行
     sound.place(placed);
     events.emit('blockPlaced', { x: tx, y: ty, z: tz, id: placed });
   }

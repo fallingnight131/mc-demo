@@ -22,6 +22,32 @@ export function addToSlots(slots: Slot[], id: number, count: number): number {
   return count;
 }
 
+/** 还能再收纳一个该 id 吗(有同 id 堆可并入,或有空槽)—— 拾取满包守卫用 */
+export function canAddToSlots(slots: Slot[], id: number): boolean {
+  return slots.some((s) => (s ? s.id === id : true));
+}
+
+/** 统计槽位组中某 id 的总数(所有权判定:放置/中键选取都查这里) */
+export function countInSlots(slots: Slot[], id: number): number {
+  let n = 0;
+  for (const s of slots) if (s && s.id === id) n += s.count;
+  return n;
+}
+
+/** 移除至多 count 个 id(耗尽的槽清空);返回实际移除数(不足则少于 count) */
+export function removeFromSlots(slots: Slot[], id: number, count: number): number {
+  let left = count;
+  for (let i = 0; i < slots.length && left > 0; i++) {
+    const s = slots[i];
+    if (!s || s.id !== id) continue;
+    const take = Math.min(s.count, left);
+    s.count -= take;
+    left -= take;
+    if (s.count <= 0) slots[i] = null;
+  }
+  return count - left;
+}
+
 /** 把 from[i] 整堆移到 to(并入或占空槽);放不下则原地不动,返回是否成功移动 */
 export function moveStack(from: Slot[], i: number, to: Slot[]): boolean {
   const s = from[i];

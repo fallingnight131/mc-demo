@@ -24,6 +24,8 @@ export class ItemDrops {
   readonly group = new THREE.Group();
   /** 拾取回调(方块 id) */
   onPickup: ((id: number) => void) | null = null;
+  /** 拾取守卫:返回 false 则不磁吸不拾取(背包满时物品留在地上而不是凭空消失) */
+  canPickup: ((id: number) => boolean) | null = null;
   private readonly drops: Drop[] = [];
   private readonly geoCache = new Map<number, THREE.BufferGeometry>();
   private readonly material: THREE.MeshBasicMaterial;
@@ -70,17 +72,18 @@ export class ItemDrops {
       }
       const p = d.mesh.position;
 
-      // 磁吸与拾取
+      // 磁吸与拾取(背包收纳不下时既不吸也不捡,物品留在地上)
+      const pickable = this.canPickup?.(d.id) ?? true;
       const dx = playerCenter.x - p.x;
       const dy = playerCenter.y - p.y;
       const dz = playerCenter.z - p.z;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d.age > 0.5 && dist < PICKUP_DIST) {
+      if (pickable && d.age > 0.5 && dist < PICKUP_DIST) {
         this.onPickup?.(d.id);
         this.remove(i);
         continue;
       }
-      if (d.age > 0.5 && dist < MAGNET_DIST) {
+      if (pickable && d.age > 0.5 && dist < MAGNET_DIST) {
         const pull = (1 - dist / MAGNET_DIST) * 30 * dt;
         d.vel.x += (dx / dist) * pull * 4;
         d.vel.y += (dy / dist) * pull * 4;

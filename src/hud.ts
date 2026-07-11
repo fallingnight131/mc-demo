@@ -3,6 +3,8 @@ export interface HotbarSlot {
   id: number;
   name: string;
   icon: HTMLCanvasElement;
+  /** 拥有数(背包面板显示 ×N;title 保持纯名称,供选择器/悬浮提示) */
+  count?: number;
 }
 
 /** 图鉴条目:图标 + 名称 + 说明 */
@@ -82,7 +84,7 @@ export class HUD {
       el.appendChild(copyIcon(it.icon));
       const name = document.createElement('span');
       name.className = 'inv-name';
-      name.textContent = it.name;
+      name.textContent = it.count && it.count > 1 ? `${it.name} ×${it.count}` : it.name;
       el.appendChild(name);
       el.addEventListener('click', () => onPick(it.id));
       this.invGrid.appendChild(el);

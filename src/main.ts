@@ -152,6 +152,7 @@ falling.onLand = (x, y, z, id) => sound.place(id);
 
 // --- 游戏系统 ---
 const inventory = new Inventory(hud, mats.textures, world, save, events);
+inventory.isCreative = () => player.creative;
 inventory.selectedSlot = Math.min(Math.max(start.slot, 0), HOTBAR_SIZE - 1);
 inventory.registerSave();
 save.register('player', {
@@ -204,6 +205,21 @@ const tnt = new TntSystem(
     onShake: (s) => {
       view.shake = Math.max(view.shake, s);
     },
+    // 宝箱被炸毁:内容物溢出成掉落物(上限护帧),开着的双栏立即关闭
+    onChestDestroyed: (x, y, z) => {
+      const { slots, wasOpen } = inventory.spillChest(x, y, z);
+      let spawned = 0;
+      for (const s of slots) {
+        if (!s) continue;
+        for (let i = 0; i < s.count && spawned < 32; i++, spawned++) {
+          drops.spawn(x, y, z, s.id);
+        }
+      }
+      if (wasOpen) {
+        panels.close('chest', true);
+        hud.toast('宝箱被炸毁了!');
+      }
+    },
   },
   mats.textures.atlas,
 );
@@ -225,6 +241,8 @@ const interact = new Interact({
   events,
   onSwing: () => view.swingArm(),
   lookDir: (out) => view.lookDir(out),
+  isCreative: () => player.creative,
+  onDenied: (name) => hud.toast(`背包里没有「${name}」,先去采集`),
 });
 // 方块点按注册表:宝箱开箱;手持打火石点燃 TNT(因此 TNT 可互相堆叠)
 interact.registerBlockUse(Block.Chest, (hit) => {
@@ -253,9 +271,10 @@ mobs.onBurning = (x, y, z) => {
   particles.burst(Math.floor(x), Math.floor(y), Math.floor(z), Block.Snow, 5);
 };
 
-// 掉落物拾取:入包 + 计数 + 反馈
+// 掉落物拾取:入包 + 计数 + 反馈;背包收纳不下时守卫拦截,物品留在地上
+drops.canPickup = (id) => inventory.canFit(id);
 drops.onPickup = (id) => {
-  inventory.pickup(id);
+  if (!inventory.pickup(id)) return; // 兜底(守卫已拦,正常不走到)
   sound.pop();
   hud.toast(`+1 ${itemName(id)}`);
 };
@@ -589,7 +608,17 @@ if (new URLSearchParams(location.search).has('test')) {
       blockHotbar: () => PLACEABLE.slice(0, HOTBAR_SIZE),
       // 调试:把全部物品塞进背包(供 e2e 从背包取任意方块)
       giveAll: () => inventory.giveAll(),
+      // 现有数(所有权;徽章与放置消耗断言用)
+      owned: (id: number) => inventory.ownedCount(id),
     },
+    chest: {
+      open: (x: number, y: number, z: number) => inventory.openChest(x, y, z),
+      stored: (x: number, y: number, z: number) => {
+        const slots = inventory.chestStore.get(`${x},${y},${z}`);
+        return slots ? slots.filter((s) => s !== null).length : -1;
+      },
+    },
+    tnt: { ignite: (x: number, y: number, z: number, fuse?: number) => tnt.ignite(x, y, z, fuse) },
     view: () => view.viewMode,
     toggleView: () => view.toggleView(),
     modelVisible: () => view.model.group.visible,

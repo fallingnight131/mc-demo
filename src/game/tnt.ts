@@ -22,6 +22,8 @@ export interface TntDeps {
   entities: EntityManager;
   /** 爆炸震屏(view.shake 并入) */
   onShake(strength: number): void;
+  /** 宝箱被炸毁:main 接线溢出内容物为掉落物并关闭可能开着的面板 */
+  onChestDestroyed?(x: number, y: number, z: number): void;
 }
 
 const RADIUS = 3.6;
@@ -61,6 +63,7 @@ export class TntSystem {
         this.ignite(x, y, z, 0.25 + Math.random() * 0.5);
         continue;
       }
+      if (id === Block.Chest) this.deps.onChestDestroyed?.(x, y, z); // 内容物溢出
       if (budget > 0) {
         particles.burst(x, y, z, id, 2);
         budget -= 2;

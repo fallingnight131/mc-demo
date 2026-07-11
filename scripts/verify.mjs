@@ -199,7 +199,14 @@ check(
 const dirtBadge = await page.evaluate(
   () => document.querySelectorAll('#hotbar .slot')[1].querySelector('.slot-count').textContent,
 );
-check('拾取计数徽章', dirtBadge === '2', `泥土槽位显示 "${dirtBadge}"(应为 2)`);
+// 里程碑 54:徽章 = 背包现有数(所有权),不再是历史拾取数。
+// equipBlocks 给了 99 泥土,挖 2 块拾取后应为 101。
+const dirtOwned = await page.evaluate(() => window.__game.ui.owned(2));
+check(
+  '拾取徽章 = 背包现有数',
+  dirtBadge === String(dirtOwned) && dirtOwned === 101,
+  `泥土槽位显示 "${dirtBadge}",背包现有 ${dirtOwned}(应 101 = 99 + 挖得 2)`,
+);
 
 // 静音切换(M 键)
 await page.keyboard.press('KeyM');
@@ -2365,6 +2372,119 @@ check(
   '触屏操控',
   touchUI && tMoved > 2 && Math.abs(yaw1 - yaw0) > 0.15 && ty1 > ty0 + 0.3,
   `UI ${touchUI},摇杆移动 ${tMoved.toFixed(1)} 格,视角 Δ${Math.abs(yaw1 - yaw0).toFixed(2)},跳起 +${(ty1 - ty0).toFixed(2)} 格`,
+);
+
+// --- 里程碑 54:库存所有权闭环(放置消耗 / 未拥有拒绝 / 收集物过存档 / 炸箱溢出) ---
+await page.evaluate(() => {
+  const g = window.__game;
+  g.setCreative(false);
+  g.mobs.setAutoSpawn(false);
+  g.mobs.clear();
+  const s = g.spawn;
+  const x = Math.floor(s.x) - 8;
+  const z = Math.floor(s.z) + 3;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = 0;
+  g.player.pitch = -0.65;
+  // 槽 1 钻石块(giveAll 已拥有)/ 槽 2 丛林草(收集类,未拥有)
+  g.ui.setHotbar([29, 38, 0, 0, 0, 0, 0, 0, 0, 0]);
+});
+await page.keyboard.press('Digit1');
+await page.waitForTimeout(150);
+const ownedDia0 = await page.evaluate(() => window.__game.ui.owned(29));
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForTimeout(280);
+const countNear = (id) =>
+  page.evaluate((bid) => {
+    const g = window.__game;
+    const p = g.player.pos;
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        for (let dz = -3; dz <= 3; dz++) {
+          if (
+            g.world.getBlock(Math.floor(p.x) + dx, Math.floor(p.y) + dy, Math.floor(p.z) + dz) ===
+            bid
+          ) {
+            n++;
+          }
+        }
+      }
+    }
+    return n;
+  }, id);
+const placedDia = await countNear(29);
+const afterPlace = await page.evaluate(() => ({
+  owned: window.__game.ui.owned(29),
+  badge: document.querySelectorAll('#hotbar .slot')[0].querySelector('.slot-count').textContent,
+}));
+check(
+  '生存放置:消耗库存且徽章同步',
+  placedDia === 1 && afterPlace.owned === ownedDia0 - 1 && afterPlace.badge === String(ownedDia0 - 1),
+  `放下 ${placedDia} 块,拥有 ${ownedDia0}→${afterPlace.owned},徽章 "${afterPlace.badge}"`,
+);
+
+await page.keyboard.press('Digit2'); // 丛林草:未拥有
+await page.waitForTimeout(150);
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForTimeout(280);
+const deniedCount = await countNear(38);
+const deniedOwned = await page.evaluate(() => window.__game.ui.owned(38));
+check(
+  '生存放置:未拥有的方块被拒绝',
+  deniedCount === 0 && deniedOwned === 0,
+  `世界中丛林草 ${deniedCount}(应 0),拥有 ${deniedOwned}`,
+);
+
+// 收集类(非经典可放置)方块装进快捷栏 → 存档重载不被重置
+await page.evaluate(() => {
+  window.__game.ui.setHotbar([38, 102, 101, 0, 0, 0, 0, 0, 0, 0]);
+  window.__game.save();
+});
+await page.reload({ waitUntil: 'load' });
+await page.waitForSelector('canvas.game', { timeout: 15000 });
+await page.waitForTimeout(1500);
+const savedBar = await page.evaluate(() => window.__game.ui.hotbar());
+check(
+  '快捷栏:收集类方块过存档不被重置',
+  savedBar[0] === 38 && savedBar[1] === 102 && savedBar[2] === 101,
+  `重载后 [${savedBar.slice(0, 3).join(',')}](应 38,102,101)`,
+);
+
+// TNT 炸宝箱:内容物(含未开箱的战利品)溢出为掉落物,存储清除
+const spillSetup = await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 10;
+  const z = Math.floor(s.z) - 6;
+  const h = g.world.gen.heightAt(x, z);
+  const y = h + 1;
+  g.world.setBlock(x, y, z, 43); // 宝箱
+  g.chest.open(x, y, z); // 生成战利品入存储(不开面板)
+  const stored = g.chest.stored(x, y, z);
+  g.player.pos.set(x + 0.5, y + 12, z + 9.5); // 撤到爆炸波及外
+  g.player.vel.set(0, 0, 0);
+  const drops0 = g.drops.count;
+  g.tnt.ignite(x + 1, y, z, 0.05); // 速爆
+  return { stored, drops0, x, y, z };
+});
+await page.waitForTimeout(700);
+const spillAfter = await page.evaluate(({ x, y, z, drops0 }) => {
+  const g = window.__game;
+  return {
+    chestGone: g.world.getBlock(x, y, z) === 0,
+    dropsMore: g.drops.count > drops0,
+    storeCleared: g.chest.stored(x, y, z) === -1,
+  };
+}, spillSetup);
+check(
+  'TNT 炸宝箱:内容物溢出为掉落物',
+  spillSetup.stored >= 1 && spillAfter.chestGone && spillAfter.dropsMore && spillAfter.storeCleared,
+  `箱内 ${spillSetup.stored} 件,炸后 箱没了 ${spillAfter.chestGone},掉落物增加 ${spillAfter.dropsMore},存储清除 ${spillAfter.storeCleared}`,
 );
 
 // --- 里程碑 53:账号 + 云存档链路(独立浏览器上下文;?test&account=1 启用网络) ---

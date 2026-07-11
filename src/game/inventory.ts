@@ -1,15 +1,20 @@
 // 系统层 · 库存:快捷栏、背包(stash)、宝箱存储、拾取计数
+// 所有权模型(里程碑 54):快捷栏只是"引用",背包 stash 才是拥有的东西 ——
+// 生存放置消耗 stash、未拥有不可放置/选取(创造豁免),徽章显示现有数。
 // 数据 + HUD 刷新在此;面板开合/指针锁属于 ui/panels,点按分发属于 interact。
-import { Block, PLACEABLE } from '../blocks';
+import { Block } from '../blocks';
 import {
   addToSlots,
+  canAddToSlots,
+  countInSlots,
   deserializeSlots,
   makeSlots,
   moveStack,
+  removeFromSlots,
   serializeSlots,
   type Slot,
 } from '../chest';
-import { inventoryItems, itemIcon, itemName, type IconSource } from '../content/items';
+import { inventoryItems, itemDef, itemIcon, itemName, type IconSource } from '../content/items';
 import type { EventBus } from '../core/events';
 import type { SaveManager } from '../core/save';
 import type { HUD, HotbarSlot } from '../hud';
@@ -35,6 +40,8 @@ export class Inventory {
   openChestKey: string | null = null;
   /** 背包面板点选物品后(装入当前槽位)回调 —— main 接线关闭面板 */
   onInventoryPick: (() => void) | null = null;
+  /** 创造模式豁免所有权(main 注入) */
+  isCreative: () => boolean = () => false;
 
   constructor(
     private readonly hud: HUD,
@@ -53,6 +60,34 @@ export class Inventory {
     return this.hotbar[this.selectedSlot];
   }
 
+  /** 现有数(所有权):放置/中键选取/徽章都以 stash 为准 */
+  ownedCount(id: number): number {
+    return countInSlots(this.stash, id);
+  }
+
+  /** 背包还能收纳该物品吗(拾取满包守卫,drops.canPickup 接这里) */
+  canFit(id: number): boolean {
+    return canAddToSlots(this.stash, id);
+  }
+
+  /** 生存放置消耗一个;返回是否成功(创造模式恒真且不消耗) */
+  consume(id: number): boolean {
+    if (this.isCreative()) return true;
+    if (removeFromSlots(this.stash, id, 1) < 1) return false;
+    this.refreshBadges();
+    if (this.openChestKey) this.refreshChestUI(); // 双栏背包侧数量同步
+    return true;
+  }
+
+  /** 全部槽位徽章 = 该物品现有数(方块类才显示 —— 它是会被放置消耗的余量;
+   *  工具/武器不堆叠不消耗,不显示徽章)。同 id 出现在多格也全部同步。 */
+  refreshBadges(): void {
+    this.hotbar.forEach((id, i) => {
+      const isBlock = id !== Block.Air && itemDef(id)?.kind === 'block';
+      this.hud.setSlotCount(i, isBlock ? this.ownedCount(id) : 0);
+    });
+  }
+
   private slotFor(id: number): HotbarSlot {
     return { id, name: itemName(id), icon: itemIcon(this.icons, id) };
   }
@@ -65,7 +100,7 @@ export class Inventory {
   refreshHotbar(): void {
     this.hud.buildHotbar(this.hotbar.map((id) => this.slotFor(id)));
     this.hud.setSelected(this.selectedSlot);
-    this.hotbar.forEach((id, i) => this.hud.setSlotCount(i, this.stats.counts[id] ?? 0));
+    this.refreshBadges();
   }
 
   select(i: number): void {
@@ -84,32 +119,38 @@ export class Inventory {
     this.refreshHotbar();
   }
 
-  /** 中键选取:已在栏内则切过去,否则替换当前槽位(创造模式行为) */
+  /** 中键选取:已在栏内则切过去;否则仅当拥有该方块(或创造模式)才装入当前槽位 */
   pickBlock(id: number): void {
     let idx = this.hotbar.indexOf(id);
-    if (idx < 0 && PLACEABLE.includes(id)) {
+    if (idx < 0 && itemDef(id)?.kind === 'block') {
+      if (!this.isCreative() && this.ownedCount(id) <= 0) {
+        this.hud.toast(`背包里没有「${itemName(id)}」,先去采集`);
+        return;
+      }
       this.assign(id);
       idx = this.selectedSlot;
     }
     if (idx >= 0) this.select(idx);
   }
 
-  /** 拾取:计数 + 徽章 + 入背包(宝箱开着则同步重绘) */
-  pickup(id: number): void {
+  /** 拾取:入背包 + 计数 + 徽章(宝箱开着则同步重绘)。
+   *  满包时 drops 的 canPickup 守卫会拦在前面,这里兜底不虚增计数。 */
+  pickup(id: number): boolean {
+    if (addToSlots(this.stash, id, 1) > 0) return false; // 背包满:拒收
     this.stats.pickups++;
     this.stats.counts[id] = (this.stats.counts[id] ?? 0) + 1;
-    const slot = this.hotbar.indexOf(id);
-    if (slot >= 0) this.hud.setSlotCount(slot, this.stats.counts[id]);
-    addToSlots(this.stash, id, 1);
+    this.refreshBadges();
     if (this.openChestKey) this.refreshChestUI();
     this.events.emit('itemPickedUp', { id, count: 1 });
+    return true;
   }
 
-  /** 背包面板(E):只展示拥有的物品,点选装入当前槽位 */
+  /** 背包面板(E):只展示拥有的物品(带数量),点选装入当前槽位 */
   refreshInventory(): void {
-    const owned = this.stash.filter((s): s is NonNullable<Slot> => s !== null).map((s) => s.id);
+    const owned = this.stash.filter((s): s is NonNullable<Slot> => s !== null);
     this.hud.buildInventory(
-      owned.map((id) => this.slotFor(id)),
+      // count 交给 HUD 显示 ×N;name/title 保持纯名称
+      owned.map((s) => ({ ...this.slotFor(s.id), count: s.count })),
       (id) => {
         this.assign(id);
         this.hud.toast(`${itemName(id)} → 槽位 ${(this.selectedSlot + 1) % 10}`);
@@ -118,8 +159,8 @@ export class Inventory {
     );
   }
 
-  /** 开箱:首次打开按所在地标的战利品表填充,保留为可反复存取的存储 */
-  openChest(x: number, y: number, z: number): void {
+  /** 取宝箱存储;首次访问按所在地标的战利品表生成(开箱与被炸溢出共用) */
+  private ensureChestSlots(x: number, y: number, z: number): Slot[] {
     const key = `${x},${y},${z}`;
     let slots = this.chestStore.get(key);
     if (!slots) {
@@ -128,9 +169,27 @@ export class Inventory {
       for (const id of CHEST_LOOT[table] ?? []) addToSlots(slots, id, 1);
       this.chestStore.set(key, slots);
     }
-    this.openChestKey = key;
+    return slots;
+  }
+
+  /** 开箱:保留为可反复存取的存储 */
+  openChest(x: number, y: number, z: number): void {
+    this.ensureChestSlots(x, y, z);
+    this.openChestKey = `${x},${y},${z}`;
     this.refreshChestUI();
     this.events.emit('chestOpened', { x, y, z });
+  }
+
+  /** 宝箱被摧毁(TNT):取出全部内容物并删除存储;返回内容与"正被打开"标志。
+   *  未开过的箱子也先按战利品表生成再溢出 —— 炸箱不吞战利品。 */
+  spillChest(x: number, y: number, z: number): { slots: Slot[]; wasOpen: boolean } {
+    const key = `${x},${y},${z}`;
+    const slots = this.ensureChestSlots(x, y, z);
+    this.chestStore.delete(key);
+    const wasOpen = this.openChestKey === key;
+    if (wasOpen) this.openChestKey = null;
+    this.save.markDirty();
+    return { slots, wasOpen };
   }
 
   closeChest(): void {
@@ -148,6 +207,7 @@ export class Inventory {
         if (side === 'chest') moveStack(slots, i, this.stash);
         else moveStack(this.stash, i, slots);
         this.refreshChestUI();
+        this.refreshBadges(); // 存取改变拥有数,快捷栏徽章同步
         this.save.markDirty(); // 周期存档持久化宝箱/背包
       },
     );
@@ -169,7 +229,6 @@ export class Inventory {
 
   /** 注册存档分节(字段名与历史存档一致:counts/hotbar/stash/chests) */
   registerSave(): void {
-    const validIds = inventoryItems();
     this.save.register('counts', {
       save: () => this.stats.counts,
       load: (d) => {
@@ -183,10 +242,12 @@ export class Inventory {
     this.save.register('hotbar', {
       save: () => [...this.hotbar],
       load: (d) => {
+        // 校验按注册表(任何已注册物品都合法):收集到的非 PLACEABLE 方块
+        // (丛林草/地狱石等)装进快捷栏后,重载不能把整栏重置掉
         if (
           Array.isArray(d) &&
           d.length === HOTBAR_SIZE &&
-          d.every((id) => id === Block.Air || validIds.includes(id as number))
+          d.every((id) => id === Block.Air || itemDef(id as number) !== undefined)
         ) {
           for (let i = 0; i < HOTBAR_SIZE; i++) this.hotbar[i] = d[i] as number;
         }

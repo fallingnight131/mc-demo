@@ -52,6 +52,15 @@
 5. **后端后续**(BACKEND.md §8):多存档位/多角色选择界面(slot 已留位)→
    成就统计上报(事件总线现成)→ 公网部署硬化(HTTPS/备份/CSRF 令牌)。
 
+## 库存语义(里程碑 54 起)
+
+- **快捷栏是引用,背包 stash 才是所有权**:生存放置消耗 `inventory.consume`、
+  未拥有拒绝(创造豁免,`isCreative` 注入);徽章 = 现有数(方块类才显示);
+  拾取有 `drops.canPickup` 满包守卫;宝箱被炸走 `spillChest` 溢出掉落物。
+- 改动这三系统时:E 面板槽位的 **title 必须保持纯名称**(e2e 选择器
+  `[title="南瓜"]` 依赖),数量走 HotbarSlot.count 由 HUD 渲染 ×N。
+- 快捷栏存档校验按物品注册表(itemDef 存在即合法),不要收窄回 PLACEABLE。
+
 ## 踩坑备忘
 
 - 面板开合牵扯指针锁,一律走 `ui/panels.ts`,不要手写 exitPointerLock。
