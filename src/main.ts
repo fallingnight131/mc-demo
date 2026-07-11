@@ -167,10 +167,8 @@ save.register('player', {
   load: () => {}, // 开机时已消费(见上)
 });
 inventory.refreshHotbar();
-inventory.refreshInventory();
-// 续档进创造:确保进入前快照存在(老档缺则现在补拍)+ 全图鉴面板
+// 续档进创造:确保进入前快照存在(老档缺则现在补拍)
 if (player.creative) inventory.setCreativeMode(true);
-inventory.syncOwnership(); // 物品栏只显示背包里真有的东西(创造内部跳过)
 
 const combat = new Combat({
   player,
@@ -244,8 +242,6 @@ const interact = new Interact({
   events,
   onSwing: () => view.swingArm(),
   lookDir: (out) => view.lookDir(out),
-  isCreative: () => player.creative,
-  onDenied: (name) => hud.toast(`背包里没有「${name}」,先去采集`),
 });
 // 方块点按注册表:宝箱开箱;手持打火石点燃 TNT(因此 TNT 可互相堆叠)
 interact.registerBlockUse(Block.Chest, (hit) => {
@@ -310,7 +306,8 @@ const panels = new Panels(
 );
 panels.register('inventory', {
   el: document.getElementById('inventory')!,
-  onOpen: () => inventory.refreshInventory(), // 反映当前背包(收集到的物品)
+  onOpen: () => inventory.openBag(), // 生存 = 完整背包网格,创造 = 全图鉴调色板
+  onClose: () => inventory.closeBag(), // 手中堆归还,不凭空消失
 });
 panels.register('chest', {
   el: document.getElementById('chest')!,
@@ -599,6 +596,15 @@ if (new URLSearchParams(location.search).has('test')) {
     flags,
     projectiles,
     save: saveGame,
+    // 调试:注入指定存档并阻断本会话写回(e2e 造旧档测迁移;reload 后生效)
+    injectSave: (json: string) => {
+      save.reset();
+      try {
+        localStorage.setItem('mc-demo-save-v1', json);
+      } catch {
+        // 忽略
+      }
+    },
     account: {
       user: () => account.user,
       storageKey: () => account.storageKey,
@@ -606,7 +612,7 @@ if (new URLSearchParams(location.search).has('test')) {
     },
     setTime: (v: number) => ambience.setTime(v),
     ui: {
-      hotbar: () => [...inventory.hotbar],
+      hotbar: () => inventory.hotbarIds(),
       selected: () => inventory.selectedSlot,
       // 调试:装配任意快捷栏布局 / 取经典方块布局(供 e2e 在清档 reload 后沿用)
       setHotbar: (ids: number[]) => inventory.setHotbar(ids),

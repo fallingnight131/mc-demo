@@ -57,6 +57,38 @@ export function removeFromSlots(slots: Slot[], id: number, count: number): numbe
   return count - left;
 }
 
+/** 从槽位拿起(拖拽):amount 省略拿整堆,右键传半堆;拿空的槽清 null */
+export function liftFromSlot(slots: Slot[], i: number, amount?: number): Slot {
+  const s = slots[i];
+  if (!s) return null;
+  const take = Math.min(s.count, Math.max(1, amount ?? s.count));
+  if (take >= s.count) {
+    slots[i] = null;
+    return s;
+  }
+  s.count -= take;
+  return { id: s.id, count: take };
+}
+
+/** 手中堆放到槽位(拖拽):空槽放入 / 同 id 并入(到上限,余量留手)/ 异 id 交换;
+ *  返回新的手中堆(null = 手空了) */
+export function dropToSlot(slots: Slot[], i: number, cursor: Slot, max = STACK_MAX): Slot {
+  if (!cursor) return null;
+  const t = slots[i];
+  if (!t) {
+    slots[i] = cursor;
+    return null;
+  }
+  if (t.id === cursor.id) {
+    const take = Math.min(max - t.count, cursor.count);
+    t.count += take;
+    const left = cursor.count - take;
+    return left > 0 ? { id: cursor.id, count: left } : null;
+  }
+  slots[i] = cursor; // 异类:交换
+  return t;
+}
+
 /** 把 from[i] 整堆移到 to(并入未满堆或开新堆,受堆叠上限约束);
  *  放不完时移走能放下的、余量留在原槽;一点都放不下返回 false */
 export function moveStack(from: Slot[], i: number, to: Slot[], max = STACK_MAX): boolean {

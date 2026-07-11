@@ -52,15 +52,24 @@
 5. **后端后续**(BACKEND.md §8):多存档位/多角色选择界面(slot 已留位)→
    成就统计上报(事件总线现成)→ 公网部署硬化(HTTPS/备份/CSRF 令牌)。
 
-## 库存语义(里程碑 54/55 起)
+## 库存语义(里程碑 54/55/56 起)
 
-- **快捷栏是背包的镜像**:生存放置消耗 `inventory.consume`、未拥有拒绝;
-  现有数归零的槽位由 `syncHotbarOwnership` 清为空手(放置后/宝箱存取后/
-  读档后);徽章 = 现有数(方块类才显示);拾取有 `drops.canPickup` 满包
-  守卫;宝箱被炸走 `spillChest` 溢出掉落物。
-- **容量规格(泰拉 PC)**:背包 50 格 / 宝箱 40 格 / 单堆 STACK_MAX=999;
+- **统一实体存储(泰拉模型,m56)**:`inventory.slots` 50 格,0..9 就是
+  物品栏、10..49 背包,外加丢弃栏 trashSlots[0];物品栏不是引用 ——
+  **同一物品只占一格**(拾取并入既有堆),右键拆堆是唯一合法多堆来源。
+  放置消耗手中这一堆(`consumeHeld`),放完即空手;徽章 = 该格堆叠数(>1)。
+- E 面板 = 完整网格(空格也渲染)+ 点击拿起/放下拖运(chest.ts 纯函数
+  liftFromSlot/dropToSlot)+ 右键拿半/放一;关面板手中堆必须归还
+  (closeBag,兜底进丢弃栏,**绝不允许物品凭空消失**)。
+- **旧档迁移**:migrateLegacySlots(纯函数,有单测)把引用式 hotbar+stash
+  迁到 slots 并对重复引用去重;存档字段 slots/trash 新增,hotbar 保留为
+  id 视图,stash 停写;别破坏两代 creativeBackup 的恢复路径。
+- e2e 契约:`ui.setHotbar(ids)` 重建每格为 99 堆(调试);`injectSave(json)`
+  注入存档并阻断写回;装备物品走 equipItem 助手(verify.mjs)。
+- **容量规格(泰拉 PC)**:总 50 格 / 宝箱 40 格 / 单堆 STACK_MAX=999;
   addToSlots 补堆→开新堆→返余量,moveStack 支持部分转移。只增不减
   (读档兼容),别动这些常量的方向。
+- 拾取有 `drops.canPickup` 满包守卫;宝箱被炸走 `spillChest` 溢出掉落物。
 - **创造模式 = 快照隔离**:开启时 `setCreativeMode(true)` 快照
   stash/快捷栏/宝箱(存档分节 creativeBackup),E 面板 = catalogItems()
   全图鉴,背包冻结(拾取消散);关闭整体恢复。改创造相关逻辑必须保住

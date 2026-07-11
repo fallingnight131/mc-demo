@@ -4,6 +4,8 @@ import {
   canAddToSlots,
   countInSlots,
   deserializeSlots,
+  dropToSlot,
+  liftFromSlot,
   makeSlots,
   moveStack,
   removeFromSlots,
@@ -89,6 +91,38 @@ describe('宝箱/背包存储', () => {
     expect(a[0]).toEqual({ id: 5, count: 201 }); // 余量留在原槽
     expect(moveStack(a, 0, b, 999)).toBe(false); // 目标满:原地不动
     expect(a[0]).toEqual({ id: 5, count: 201 });
+  });
+
+  it('拖拽:拿起整堆/半堆,放下时空槽放入、同类并入到上限、异类交换', () => {
+    const s = makeSlots(3);
+    addToSlots(s, 5, 10);
+    addToSlots(s, 6, 4);
+    // 右键拿一半
+    let cursor = liftFromSlot(s, 0, 5);
+    expect(cursor).toEqual({ id: 5, count: 5 });
+    expect(s[0]).toEqual({ id: 5, count: 5 }); // 拆成两份:同类分占两处是合法的
+    // 放到空槽
+    cursor = dropToSlot(s, 2, cursor);
+    expect(cursor).toBe(null);
+    expect(s[2]).toEqual({ id: 5, count: 5 });
+    // 拿起整堆并入同类(上限内)
+    cursor = liftFromSlot(s, 2);
+    cursor = dropToSlot(s, 0, cursor);
+    expect(cursor).toBe(null);
+    expect(s[0]).toEqual({ id: 5, count: 10 });
+    // 异类交换:手上 5,槽里 6 → 换
+    cursor = liftFromSlot(s, 0);
+    cursor = dropToSlot(s, 1, cursor);
+    expect(cursor).toEqual({ id: 6, count: 4 });
+    expect(s[1]).toEqual({ id: 5, count: 10 });
+    // 同类并入触上限:余量留手
+    const t = makeSlots(1);
+    addToSlots(t, 6, 998, 999);
+    cursor = dropToSlot(t, 0, cursor, 999);
+    expect(t[0]).toEqual({ id: 6, count: 999 });
+    expect(cursor).toEqual({ id: 6, count: 3 });
+    // 空手拿空槽:无事发生
+    expect(liftFromSlot(makeSlots(1), 0)).toBe(null);
   });
 
   it('序列化往返保真(稀疏),非法数据被过滤', () => {

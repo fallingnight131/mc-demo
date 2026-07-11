@@ -27,6 +27,11 @@ export interface ChestSlotView {
   icon: HTMLCanvasElement;
 }
 
+/** 背包网格格子视图(null = 空格) */
+export type BagSlotView = ChestSlotView | null;
+/** 背包网格分区:物品栏行 / 背包区 / 丢弃栏 */
+export type BagArea = 'hotbar' | 'bag' | 'trash';
+
 /** 图标画布可能同时出现在快捷栏与背包的多个槽位,DOM 中必须用副本 */
 function copyIcon(src: HTMLCanvasElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -93,6 +98,87 @@ export class HUD {
 
   setInventoryVisible(v: boolean): void {
     this.inventory.classList.toggle('open', v);
+  }
+
+  /** E 面板双模式:生存 = 完整背包网格(bag),创造 = 全图鉴调色板(palette) */
+  setBagMode(mode: 'bag' | 'palette'): void {
+    document.getElementById('bag-ui')!.style.display = mode === 'bag' ? '' : 'none';
+    this.invGrid.style.display = mode === 'palette' ? '' : 'none';
+    document.getElementById('inv-title')!.textContent =
+      mode === 'bag'
+        ? '背包 — 点击拿起/放下搬运 · 右键拿一半/放一个'
+        : '背包(创造) — 点方块放入当前手持槽位';
+  }
+
+  /**
+   * 完整背包网格:物品栏行(0..9)+ 背包区(40 格)+ 丢弃栏。
+   * 空格也渲染(泰拉式);点格子回调 (区域, 区内序号, 鼠标键)。
+   */
+  buildBag(
+    hot: BagSlotView[],
+    bag: BagSlotView[],
+    trash: BagSlotView,
+    onCell: (area: BagArea, idx: number, button: number) => void,
+  ): void {
+    const renderGrid = (el: HTMLElement, views: BagSlotView[], area: BagArea) => {
+      el.innerHTML = '';
+      views.forEach((v, i) => {
+        const cell = document.createElement('div');
+        cell.className = 'bag-slot' + (v ? ' filled' : '');
+        if (v) {
+          cell.appendChild(copyIcon(v.icon));
+          cell.title = v.name;
+          if (v.count > 1) {
+            const c = document.createElement('span');
+            c.className = 'bag-count';
+            c.textContent = String(Math.min(v.count, 999));
+            cell.appendChild(c);
+          }
+        }
+        cell.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onCell(area, i, e.button);
+        });
+        cell.addEventListener('contextmenu', (e) => e.preventDefault());
+        el.appendChild(cell);
+      });
+    };
+    renderGrid(document.getElementById('bag-hotbar')!, hot, 'hotbar');
+    renderGrid(document.getElementById('bag-main')!, bag, 'bag');
+    renderGrid(document.getElementById('bag-trash')!, [trash], 'trash');
+  }
+
+  /** 拖拽手中堆的浮动幽灵(跟随指针;null 隐藏) */
+  private ghostBound = false;
+  setDragGhost(view: BagSlotView): void {
+    const ghost = document.getElementById('drag-ghost')!;
+    if (!this.ghostBound) {
+      this.ghostBound = true;
+      document.addEventListener('pointermove', (e) => {
+        ghost.style.left = `${e.clientX + 6}px`;
+        ghost.style.top = `${e.clientY + 6}px`;
+      });
+      document.addEventListener(
+        'pointerdown',
+        (e) => {
+          ghost.style.left = `${e.clientX + 6}px`;
+          ghost.style.top = `${e.clientY + 6}px`;
+        },
+        true,
+      );
+    }
+    ghost.innerHTML = '';
+    ghost.classList.toggle('show', view !== null);
+    if (view) {
+      ghost.appendChild(copyIcon(view.icon));
+      if (view.count > 1) {
+        const c = document.createElement('span');
+        c.className = 'bag-count';
+        c.textContent = String(Math.min(view.count, 999));
+        ghost.appendChild(c);
+      }
+    }
   }
 
   /** 图鉴:分类渲染图标 + 名称 + 说明 */

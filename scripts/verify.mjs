@@ -74,6 +74,16 @@ const equipBlocks = (ctx = page) =>
     window.__game.ui.giveAll();
   });
 
+// 装备物品到当前槽位(点选装备的旧 UI 已被拖拽背包取代;
+// 面板拖拽由专项用例覆盖,这里走调试通道 —— 注意 setHotbar 每格重建为 99 堆)
+const equipItem = (id) =>
+  page.evaluate((iid) => {
+    const g = window.__game;
+    const bar = g.ui.hotbar();
+    bar[g.ui.selected()] = iid;
+    g.ui.setHotbar(bar);
+  }, id);
+
 // 里程碑 41:初始快捷栏空手起步,仅带剑(102)/镐(101)/斧(103),其余为空(0)
 const freshBar = await page.evaluate(() => window.__game.ui.hotbar());
 check(
@@ -88,7 +98,7 @@ check(
 await page.keyboard.press('KeyE');
 await page.waitForTimeout(200);
 const freshBag = await page.evaluate(() =>
-  [...document.querySelectorAll('#inv-grid .inv-slot')].map((e) => e.getAttribute('title')),
+  [...document.querySelectorAll('#bag-ui .bag-slot.filled')].map((e) => e.getAttribute('title')),
 );
 await page.keyboard.press('KeyE');
 await page.waitForTimeout(150);
@@ -336,10 +346,7 @@ if (stoneAt) {
   await page.waitForTimeout(150);
   const handIntact = (await blockAt(stoneAt.x, stoneAt.y, stoneAt.z)) === 3;
   await page.keyboard.press('Digit7'); // 背包取镐子到槽位 7
-  await page.keyboard.press('KeyE');
-  await page.waitForTimeout(250);
-  await page.click('#inv-grid .inv-slot[title="镐子"]');
-  await page.waitForTimeout(250);
+  await equipItem(101); // 镐子
   // page.click 的鼠标移动会转动视角(软锁),重新对准石头
   await page.evaluate(() => {
     const g = window.__game;
@@ -400,10 +407,7 @@ if (logAt) {
   await page.waitForTimeout(150);
   const logIntact = (await blockAt(logAt.x, logAt.y, logAt.z)) === 5;
   await page.keyboard.press('Digit8'); // 背包取斧头到槽位 8
-  await page.keyboard.press('KeyE');
-  await page.waitForTimeout(250);
-  await page.click('#inv-grid .inv-slot[title="斧头"]');
-  await page.waitForTimeout(250);
+  await equipItem(103); // 斧头
   // page.click 的鼠标移动会转动视角(软锁),重新对准原木
   await page.evaluate(() => {
     const g = window.__game;
@@ -468,10 +472,7 @@ await page.evaluate(() => {
   g.player.vel.set(0, 0, 0);
 });
 await page.keyboard.press('Digit5'); // 槽位 5,从背包取南瓜
-await page.keyboard.press('KeyE');
-await page.waitForTimeout(250);
-await page.click('#inv-grid .inv-slot[title="南瓜"]');
-await page.waitForTimeout(250);
+await equipItem(26); // 南瓜
 for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
   await page.evaluate((y) => {
     const g = window.__game;
@@ -521,7 +522,7 @@ const invOpen = await page.evaluate(() =>
 await page.screenshot({ path: `${OUT}/9-inventory.png` });
 const toolIconStyle = await page.evaluate(() => {
   const pixels = (title) => {
-    const slot = [...document.querySelectorAll('#inv-grid .inv-slot')].find(
+    const slot = [...document.querySelectorAll('#bag-ui .bag-slot.filled')].find(
       (el) => el.getAttribute('title') === title,
     );
     const canvas = slot?.querySelector('canvas');
@@ -569,18 +570,39 @@ check(
     toolIconStyle.pickWood > 45,
   `铁剑刃/护手/木柄 ${toolIconStyle.swordIron}/${toolIconStyle.swordGuard}/${toolIconStyle.swordWood},斜镐头/左上头/右下尖/木柄 ${toolIconStyle.pickIron}/${toolIconStyle.pickHeadUpLeft}/${toolIconStyle.pickTipDownRight}/${toolIconStyle.pickWood}`,
 );
-await page.click('#inv-grid .inv-slot[title="砖块"]');
-await page.waitForTimeout(250);
+// 泰拉式拖拽:从背包区拿起砖块 → 与物品栏槽 5 现有物交换 → 换下的放回空格
+const swapPre = await page.evaluate(() => {
+  const id = window.__game.ui.hotbar()[4];
+  return { id, owned: window.__game.ui.owned(id) };
+});
+await page.click('#bag-main .bag-slot.filled[title="砖块"]');
+await page.waitForTimeout(150);
+const ghostShown = await page.evaluate(() =>
+  document.getElementById('drag-ghost').classList.contains('show'),
+);
+await page.click('#bag-hotbar .bag-slot:nth-child(5)'); // 异类交换:手上变木板
+await page.waitForTimeout(150);
+await page.click('#bag-main .bag-slot:not(.filled)'); // 木板放进空格
+await page.waitForTimeout(150);
+const ghostGone = await page.evaluate(
+  () => !document.getElementById('drag-ghost').classList.contains('show'),
+);
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(200);
 const invClosed = await page.evaluate(
   () => !document.getElementById('inventory').classList.contains('open'),
 );
 const slotBlock = await page.evaluate(
   () => window.__game.ui.hotbar()[window.__game.ui.selected()],
 );
+const swapPost = await page.evaluate(
+  (id) => window.__game.ui.owned(id),
+  swapPre.id,
+);
 check(
-  '背包选块',
-  invOpen && invClosed && slotBlock === 19,
-  `打开 ${invOpen},点选后关闭 ${invClosed},当前槽位方块 id=${slotBlock}(砖块=19)`,
+  '背包拖拽:拿起/交换/放空格',
+  invOpen && ghostShown && ghostGone && invClosed && slotBlock === 19 && swapPost === swapPre.owned,
+  `打开 ${invOpen},拿起幽灵 ${ghostShown},放净 ${ghostGone},关闭 ${invClosed},槽 5=${slotBlock}(砖块 19),被换物 #${swapPre.id} 总量守恒 ${swapPost}=${swapPre.owned}`,
 );
 
 // --- 图鉴:从设置进入,分类展示方块/家具/工具武器/植被/生物,可关闭 ---
@@ -699,10 +721,7 @@ check(
 
 // --- 剑:双倍伤害,一剑 hp 3→1,两剑毙命 ---
 await page.keyboard.press('Digit8'); // 背包取剑到槽位 8
-await page.keyboard.press('KeyE');
-await page.waitForTimeout(250);
-await page.click('#inv-grid .inv-slot[title="剑"]');
-await page.waitForTimeout(250);
+await equipItem(102); // 剑
 await page.evaluate(() => {
   const g = window.__game;
   g.setHp(10);
@@ -845,10 +864,7 @@ if (tntPos) {
 
   // 换打火石点燃:背包取打火石到槽位 6
   await page.keyboard.press('Digit6');
-  await page.keyboard.press('KeyE');
-  await page.waitForTimeout(250);
-  await page.click('#inv-grid .inv-slot[title="打火石"]');
-  await page.waitForTimeout(250);
+  await equipItem(100); // 打火石
   // 重新对准(page.click 的鼠标移动会转动视角)
   await page.evaluate(() => {
     const g = window.__game;
@@ -1187,10 +1203,7 @@ await page.evaluate(() => {
   g.setTime(0.75); // 午夜
 });
 await page.keyboard.press('Digit5');
-await page.keyboard.press('KeyE');
-await page.waitForTimeout(250);
-await page.click('#inv-grid .inv-slot[title="火把"]');
-await page.waitForTimeout(250);
+await equipItem(33); // 火把
 const lightBaseline = await page.evaluate(() => {
   const g = window.__game;
   g.player.yaw = 0;
@@ -1431,10 +1444,7 @@ await page.waitForTimeout(150);
 const heldStone = await page.evaluate(() => window.__game.heldId());
 // 现场装剑(清档测试重置过快捷栏),装完重新对准
 await page.keyboard.press('Digit8');
-await page.keyboard.press('KeyE');
-await page.waitForTimeout(250);
-await page.click('#inv-grid .inv-slot[title="剑"]');
-await page.waitForTimeout(250);
+await equipItem(102); // 剑
 await page.evaluate(() => {
   const g = window.__game;
   g.player.yaw = 0;
@@ -1912,10 +1922,7 @@ if (caveSpot) {
   });
   // 放火把照亮洞穴
   await page.keyboard.press('Digit5');
-  await page.keyboard.press('KeyE');
-  await page.waitForTimeout(250);
-  await page.click('#inv-grid .inv-slot[title="火把"]');
-  await page.waitForTimeout(250);
+  await equipItem(33); // 火把
   await page.evaluate(() => {
     const g = window.__game;
     g.player.yaw = 0;
@@ -2394,6 +2401,7 @@ await page.evaluate(() => {
 await page.keyboard.press('Digit1');
 await page.waitForTimeout(150);
 const ownedDia0 = await page.evaluate(() => window.__game.ui.owned(29));
+const stackDia0 = 99; // setHotbar 调试装配的手中堆
 await page.mouse.down();
 await page.mouse.up();
 await page.waitForTimeout(280);
@@ -2422,38 +2430,11 @@ const afterPlace = await page.evaluate(() => ({
   badge: document.querySelectorAll('#hotbar .slot')[0].querySelector('.slot-count').textContent,
 }));
 check(
-  '生存放置:消耗库存且徽章同步',
-  placedDia === 1 && afterPlace.owned === ownedDia0 - 1 && afterPlace.badge === String(ownedDia0 - 1),
-  `放下 ${placedDia} 块,拥有 ${ownedDia0}→${afterPlace.owned},徽章 "${afterPlace.badge}"`,
-);
-
-await page.keyboard.press('Digit2'); // 丛林草:未拥有
-await page.waitForTimeout(150);
-await page.mouse.down();
-await page.mouse.up();
-await page.waitForTimeout(280);
-const deniedCount = await countNear(38);
-const deniedOwned = await page.evaluate(() => window.__game.ui.owned(38));
-check(
-  '生存放置:未拥有的方块被拒绝',
-  deniedCount === 0 && deniedOwned === 0,
-  `世界中丛林草 ${deniedCount}(应 0),拥有 ${deniedOwned}`,
-);
-
-// 收集类(非经典可放置)方块装进快捷栏 → 存档重载:整栏不被校验重置,
-// 但未拥有的物品(丛林草 owned=0)按所有权规则清为空手(里程碑 55)
-await page.evaluate(() => {
-  window.__game.ui.setHotbar([38, 102, 101, 0, 0, 0, 0, 0, 0, 0]);
-  window.__game.save();
-});
-await page.reload({ waitUntil: 'load' });
-await page.waitForSelector('canvas.game', { timeout: 15000 });
-await page.waitForTimeout(1500);
-const savedBar = await page.evaluate(() => window.__game.ui.hotbar());
-check(
-  '快捷栏过存档:布局保留 + 未拥有槽清空',
-  savedBar[0] === 0 && savedBar[1] === 102 && savedBar[2] === 101,
-  `重载后 [${savedBar.slice(0, 3).join(',')}](应 0,102,101:38 未拥有被清,栏未整体重置)`,
+  '生存放置:消耗手中堆且徽章同步',
+  placedDia === 1 &&
+    afterPlace.owned === ownedDia0 - 1 &&
+    afterPlace.badge === String(stackDia0 - 1),
+  `放下 ${placedDia} 块,拥有 ${ownedDia0}→${afterPlace.owned},手中堆徽章 "${afterPlace.badge}"(应 ${stackDia0 - 1})`,
 );
 
 // TNT 炸宝箱:内容物(含未开箱的战利品)溢出为掉落物,存储清除
@@ -2509,6 +2490,8 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(1200); // 等 0.5s 拾取延迟 + 磁吸
 const dirtGot = await page.evaluate(() => window.__game.ui.owned(2));
+// 拾取自动并入既有堆/落入第一个空格 —— 剑镐斧占 0..2,泥土应落在物品栏槽 4(index 3)
+const dirtSlot = await page.evaluate(() => window.__game.ui.hotbar().indexOf(2));
 await page.evaluate(() => {
   const g = window.__game;
   const s = g.spawn;
@@ -2519,9 +2502,8 @@ await page.evaluate(() => {
   g.player.vel.set(0, 0, 0);
   g.player.yaw = 0;
   g.player.pitch = -0.65;
-  g.ui.setHotbar([2, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 });
-await page.keyboard.press('Digit1');
+await page.keyboard.press('Digit4'); // 泥土所在槽
 await page.waitForTimeout(150);
 const dirt0 = await countNear(2); // 泥土是自然方块:按放置前后增量断言
 for (let i = 0; i < 3; i++) {
@@ -2531,26 +2513,27 @@ for (let i = 0; i < 3; i++) {
 }
 const depleted = await page.evaluate(() => ({
   owned: window.__game.ui.owned(2),
-  bar0: window.__game.ui.hotbar()[0],
+  slot: window.__game.ui.hotbar()[3],
 }));
 const dirtPlaced = (await countNear(2)) - dirt0;
 check(
-  '物品栏所有权:放完即空手,不再显示未拥有物',
-  dirtGot === 2 && depleted.owned === 0 && depleted.bar0 === 0 && dirtPlaced === 2,
-  `拾得 ${dirtGot},净放置 ${dirtPlaced}(第三次点按无效),放完 owned=${depleted.owned},槽位=${depleted.bar0}(应空手 0)`,
+  '物品栏即背包前排:拾取入栏,放完这一堆即空手',
+  dirtGot === 2 && dirtSlot === 3 && depleted.owned === 0 && depleted.slot === 0 && dirtPlaced === 2,
+  `拾得 ${dirtGot}(自动入槽 ${dirtSlot + 1}),净放置 ${dirtPlaced}(第三次点按无效),放完 owned=${depleted.owned},槽位=${depleted.slot}(应空 0)`,
 );
 
-// 创造模式:背包变全图鉴无限;退出后恢复进入前的背包/快捷栏
+// 创造模式:背包变全图鉴调色板;退出后恢复进入前的背包/快捷栏
 await page.evaluate(() => {
   const g = window.__game;
   const p = g.player.pos;
   g.drops.spawn(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z), 2); // 再拾 1 个泥土当"进入前状态"
 });
 await page.waitForTimeout(1100);
-await page.evaluate(() => window.__game.ui.setHotbar([2, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+await page.keyboard.press('Digit4'); // 泥土自动回到空出的槽 4
+await page.waitForTimeout(120);
 const preCreative = await page.evaluate(() => ({
   owned: window.__game.ui.owned(2),
-  bar0: window.__game.ui.hotbar()[0],
+  slot: window.__game.ui.hotbar()[3],
 }));
 await page.evaluate(() => window.__game.setCreative(true));
 await page.waitForTimeout(150);
@@ -2559,47 +2542,108 @@ await page.waitForTimeout(250);
 const creativeCatalog = await page.evaluate(
   () => document.querySelectorAll('#inv-grid .inv-slot').length,
 );
-await page.click('#inv-grid .inv-slot[title="萤石"]'); // 点选未拥有的萤石(面板自动关闭)
+await page.click('#inv-grid .inv-slot[title="萤石"]'); // 点选装入当前槽(面板自动关闭)
 await page.waitForTimeout(250);
 await page.evaluate(() => {
   // 转向干净的一侧、俯角放陡(落点 ~1.3 格,必在 countNear ±3 区域内)
   window.__game.player.yaw = Math.PI / 2;
   window.__game.player.pitch = -0.95;
 });
-await page.mouse.down(); // 创造放置:不消耗、不污染背包
+await page.mouse.down(); // 创造放置:不消耗
 await page.mouse.up();
 await page.waitForTimeout(260);
 const creativePlaced = await countNear(34);
-const creativeState = await page.evaluate(() => ({
-  glowOwned: window.__game.ui.owned(34),
-  bar0: window.__game.ui.hotbar()[0],
-}));
+const creativeHeld = await page.evaluate(() => window.__game.ui.hotbar()[3]);
 await page.evaluate(() => window.__game.setCreative(false));
 await page.waitForTimeout(200);
 const postCreative = await page.evaluate(() => ({
   owned: window.__game.ui.owned(2),
   glowOwned: window.__game.ui.owned(34),
-  bar0: window.__game.ui.hotbar()[0],
+  slot: window.__game.ui.hotbar()[3],
 }));
-await page.keyboard.press('KeyE'); // 生存背包恢复为"拥有的物品"
+await page.keyboard.press('KeyE'); // 生存背包恢复:完整网格,4 个填充格
 await page.waitForTimeout(250);
 const survivalBag = await page.evaluate(
-  () => document.querySelectorAll('#inv-grid .inv-slot').length,
+  () => document.querySelectorAll('#bag-ui .bag-slot.filled').length,
+);
+const bagCells = await page.evaluate(
+  () =>
+    document.querySelectorAll('#bag-hotbar .bag-slot').length +
+    document.querySelectorAll('#bag-main .bag-slot').length,
 );
 await page.keyboard.press('KeyE');
 await page.waitForTimeout(150);
 check(
-  '创造模式:全图鉴无限背包,退出恢复原状',
+  '创造模式:全图鉴调色板,退出恢复原状',
   creativeCatalog > 40 &&
-    creativeState.bar0 === 34 &&
+    creativeHeld === 34 &&
     creativePlaced === 1 &&
-    creativeState.glowOwned === 0 &&
-    postCreative.bar0 === preCreative.bar0 &&
+    postCreative.slot === preCreative.slot &&
     postCreative.owned === preCreative.owned &&
     postCreative.glowOwned === 0 &&
-    survivalBag === 4,
-  `创造图鉴 ${creativeCatalog} 项(>40),持萤石放置 ${creativePlaced} 块且 owned=${creativeState.glowOwned};` +
-    `退出后槽位 ${postCreative.bar0}=进入前 ${preCreative.bar0},泥土 ${postCreative.owned}=进入前 ${preCreative.owned},生存背包 ${survivalBag} 项(剑镐斧+泥土)`,
+    survivalBag === 4 &&
+    bagCells === 50,
+  `创造图鉴 ${creativeCatalog} 项(>40),持萤石(${creativeHeld})放置 ${creativePlaced} 块;` +
+    `退出后槽 4=${postCreative.slot}(进入前 ${preCreative.slot}),泥土 ${postCreative.owned}=进入前 ${preCreative.owned},` +
+    `萤石归零 ${postCreative.glowOwned === 0};背包满网格 ${bagCells} 格中 ${survivalBag} 格有物(剑镐斧+泥土)`,
+);
+
+// 丢弃栏:拿起泥土丢进丢弃栏(owned 归零),可反悔取回
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(250);
+await page.click('#bag-hotbar .bag-slot:nth-child(4)'); // 拿起泥土
+await page.waitForTimeout(120);
+await page.click('#bag-trash .bag-slot'); // 丢进丢弃栏
+await page.waitForTimeout(120);
+const trashed = await page.evaluate(() => ({
+  owned: window.__game.ui.owned(2),
+  trashFilled: document.querySelector('#bag-trash .bag-slot').classList.contains('filled'),
+}));
+await page.click('#bag-trash .bag-slot'); // 反悔:从丢弃栏拿回
+await page.waitForTimeout(120);
+await page.click('#bag-hotbar .bag-slot:nth-child(4)'); // 放回槽 4
+await page.waitForTimeout(120);
+const recovered = await page.evaluate(() => ({
+  owned: window.__game.ui.owned(2),
+  slot: window.__game.ui.hotbar()[3],
+}));
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(150);
+check(
+  '丢弃栏:丢弃与反悔取回',
+  trashed.owned === 0 && trashed.trashFilled && recovered.owned === 1 && recovered.slot === 2,
+  `丢弃后 owned=${trashed.owned} 丢弃栏有物 ${trashed.trashFilled};取回后 owned=${recovered.owned},槽 4=${recovered.slot}`,
+);
+
+// 旧档迁移:引用式快捷栏(含同 id 重复引用)+ stash → 实体槽去重
+await page.evaluate(() => {
+  window.__game.injectSave(
+    JSON.stringify({
+      hotbar: [3, 3, 8, 0, 0, 0, 0, 0, 0, 0], // 石头被引用两次(旧 bug)
+      stash: [
+        [0, 3, 50],
+        [1, 8, 2],
+        [2, 5, 7],
+      ],
+    }),
+  );
+});
+await page.reload({ waitUntil: 'load' });
+await page.waitForSelector('canvas.game', { timeout: 15000 });
+await page.waitForTimeout(1500);
+const migrated = await page.evaluate(() => ({
+  bar: window.__game.ui.hotbar(),
+  stone: window.__game.ui.owned(3),
+  log: window.__game.ui.owned(5),
+}));
+check(
+  '旧档迁移:同物品多格引用去重为一格',
+  migrated.bar[0] === 3 &&
+    migrated.bar[1] === 0 &&
+    migrated.bar[2] === 8 &&
+    migrated.stone === 50 &&
+    migrated.log === 7,
+  `迁移后 [${migrated.bar.slice(0, 3).join(',')}](应 3,0,8:重复引用清空),石头 ×${migrated.stone},原木 ×${migrated.log}(进背包区)`,
 );
 
 // --- 里程碑 53:账号 + 云存档链路(独立浏览器上下文;?test&account=1 启用网络) ---
