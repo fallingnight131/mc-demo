@@ -113,13 +113,16 @@ interface GameEvents {
 interface ItemDef {
   id: number;
   name: string;
-  kind: 'block' | 'tool' | 'weapon' | 'material' | 'consumable';
+  kind: 'block' | 'tool' | 'weapon' | 'armor' | 'accessory' | 'material' | 'consumable';
   desc?: string;                    // 图鉴/悬浮提示
   icon(): HTMLCanvasElement;        // 惰性生成,内部缓存
+  maxStack?: number;                // 单堆上限(装备/饰品 = 1,缺省 999)
   block?: number;                   // kind=block:对应方块 id(通常等于自身)
   toolClass?: 'pickaxe' | 'axe';    // 挖掘加速类别
   toolPower?: number;               // 挖掘倍速(镐/斧 = 3)
   weapon?: WeaponDef;               // kind=weapon 必填
+  armor?: ArmorDef;                 // kind=armor:{slot: head|body|legs, defense}
+  accessory?: AccessoryDef;         // kind=accessory:{stats: 属性加成}(见 §3.8b)
 }
 
 interface WeaponDef {
@@ -182,6 +185,56 @@ registerBlockUse(Block.TNT,   (hit, ctx) => 手持打火石 ? ignite(hit) : fals
 分发顺序:实体交互(生物/NPC,近者优先)→ 方块 use 注册表 → 手持物品 use
 (武器→挥击,方块→放置)。NPC 对话就是"实体交互"的一个注册项。
 
+### 3.8b 属性表与装备(`src/game/stats.ts` + `src/game/equipment.ts`)
+
+**一切改写玩家数值的东西(盔甲/饰品,未来:药水 buff、套装加成)都汇入一张
+属性表**,规则系统只读聚合结果,不认具体装备:
+
+```ts
+interface StatSheet {
+  defense: number;      // 伤害减免:实际伤害 = max(1, dmg - defense/2)(泰拉公式)
+  maxHp: number;        // 基础 10
+  moveSpeed: number;    // 乘数(饰品加成累加:1 + Σ加成)
+  jumpBoost: number;    // 乘数
+  miningSpeed: number;  // 乘数
+  meleeDamage: number;  // 乘数
+  extraJumps: number;   // 空中额外跳(云朵瓶式)
+  noFallDamage: boolean;// 幸运马蹄铁式
+}
+```
+
+- `Equipment`:8 个装备槽(头/身/腿 + 5 饰品),放入/取下即 `recompute()`
+  聚合出缓存 StatSheet;槽型校验(头盔只进头槽,饰品只进饰品槽)。
+- 消费方:Player 物理读 moveSpeed/jumpBoost/extraJumps;combat 读
+  defense/maxHp/meleeDamage/noFallDamage;interact 挖掘读 miningSpeed。
+  **加一件新装备 = 注册 ItemDef(armor/accessory 字段)+ 图标,规则零改动**;
+  需要全新行为(如冲刺盾)才加 StatSheet 字段 + 对应系统各改一处。
+- 装备槽是背包面板里的一列(拖放同一套 lift/drop),存档分节 'equip'。
+
+### 3.8c 世界事件(`src/content/events.ts` + `src/game/worldevents.ts`)
+
+血月/南瓜月式的全局事件 = **一条声明式定义 + 生效期间的修饰集**:
+
+```ts
+interface WorldEventDef {
+  id: string; name: string;
+  nightChance: number;        // 黄昏触发概率(0 = 仅召唤物/调试触发)
+  endsAtDawn: boolean;        // 黎明自动结束(波次型事件用进度结束,见路线图)
+  fogTint?: { color; strength }; // 氛围修饰(血月红雾)
+  spawnRateMul: number;       // 刷怪频率倍数
+  spawnCapMul: number;        // 刷怪上限倍数
+  startMsg / endMsg;          // 公告
+}
+```
+
+- `WorldEvents` 系统:黄昏沿(starAlpha 升穿 0.5)掷骰触发、黎明沿结束;
+  `start(id)/stop()` 供召唤物(交互注册表)与调试;活动事件随存档恢复。
+- 修饰的消费方:Mobs 读 `spawnRateMul/spawnCapMul`,ambience 读
+  `eventFogTint`,声景/刷怪表等未来修饰同模式扩展。
+- 触发/结束广播 `worldEventStarted/Ended`(事件总线)+ `flags` 计数
+  (`event.bloodMoon.count`),为成就/进度留钩子。
+- **血月是参考实现**;南瓜月式波次事件在此上加 `waves` 进度字段(§8.路线图)。
+
 ### 3.8 UI 面板管理(`src/ui/panels.ts`)
 
 模态面板(背包/宝箱/图鉴/未来的对话/商店/合成)统一注册:
@@ -241,7 +294,23 @@ registerBlockUse(Block.TNT,   (hit, ctx) => 手持打火石 ? ignite(hit) : fals
 `src/game/events-world.ts`(未来):条件(时间/旗标/概率)→ 广播事件 → 各系统响应
 (spawner 换刷怪表、ambience 换雾色音景、worldgen 落陨石=批量 setBlock)。
 
-### 4.7 加存档字段 / 加面板
+### 4.7 加一件装备 / 饰品(§3.8b)
+
+1. `tools.ts` 加 id(100+ 空间顺延),`textures.ts` 画 16px 图标(paintTool)。
+2. `content/items.ts` 注册:盔甲 `{ kind:'armor', maxStack:1, armor:{slot,defense} }`,
+   饰品 `{ kind:'accessory', maxStack:1, accessory:{ stats:{ moveSpeed:0.25 } } }`。
+3. 获取途径入战利品表(structures.CHEST_LOOT)或合成(未来)。
+4. **不需要**改 equipment/combat/player —— 属性经 StatSheet 聚合自动生效;
+   只有全新行为(新 StatSheet 字段)才碰对应系统。图鉴自动收录。
+
+### 4.8 加一个世界事件(§3.8c,血月为参考实现)
+
+1. `content/events.ts` 注册 WorldEventDef(触发概率/结束条件/修饰集/公告)。
+2. 特殊触发(召唤物)= 交互注册表调 `worldEvents.start(id)`。
+3. 新修饰类型(换刷怪表/换音乐):WorldEventDef 加字段 + 消费系统读一处。
+4. e2e:`__game.worldEvents.start/stop` 确定性驱动。
+
+### 4.9 加存档字段 / 加面板
 
 存档:系统内 `save.register('mySection', {save, load})`,**禁止**改别人的分节。
 面板:index.html 加 DOM + `panels.register`,开合/锁指针自动获得。
@@ -276,6 +345,12 @@ registerBlockUse(Block.TNT,   (hit, ctx) => 手持打火石 ? ignite(hit) : fals
 
 **A. 架构落地(本轮)**:core(事件/存档/旗标)→ 物品注册表 → main.ts 拆系统
 → 实体层+弹幕 → 面板管理器。每步全量验证 + 提交。
+
+**A2. 属性/装备/事件骨架(里程碑 57 落地)**:StatSheet 属性管线 + 装备/饰品槽
+(铁甲三件 + 饰品为参考实现)+ 世界事件系统(血月为参考实现)。
+后续:套装加成(armor set 检测)→ 更多饰品行为字段(冲刺/水上行走)→
+波次事件(南瓜月:WorldEventDef 加 waves/score,黎明结算)→ 事件专属刷怪表与掉落
+→ 药水 buff(同一 StatSheet 聚合,带时限来源)。
 
 **B. 武器系统**:近战扇形挥砍与冷却 → 弹幕武器(剑气)→ 武器分级与战利品分布
 → 泰拉之刃 → 天顶剑(环绕+追踪)。伤害数字、命中音效打磨。
