@@ -23,6 +23,7 @@ import {
   itemDef,
   itemIcon,
   itemName,
+  maxStackOf,
   type IconSource,
 } from '../content/items';
 import type { EventBus } from '../core/events';
@@ -31,6 +32,7 @@ import type { BagArea, BagSlotView, HUD, HotbarSlot } from '../hud';
 import { CHEST_LOOT } from '../structures';
 import { Tool } from '../tools';
 import type { World } from '../world';
+import { canEquipAt, EQUIP_SLOT_NAMES, type Equipment } from './equipment';
 
 export const HOTBAR_SIZE = 10;
 /** 泰拉瑞亚 PC 规格:总 50 格(物品栏 10 + 背包 40),宝箱 40 格 */
@@ -105,6 +107,8 @@ export class Inventory {
   isCreative: () => boolean = () => false;
   /** E 面板(背包网格)是否开着 —— 拾取时同步重绘 */
   bagOpen = false;
+  /** 装备系统(main 注入;装备槽是背包面板的一个分区) */
+  equipment: Equipment | null = null;
   private creativeBackup: CreativeBackup | null = null;
   // 旧档字段暂存(load 顺序:hotbar/stash 先于 slots)
   private legacyHotbar: unknown = null;
@@ -240,7 +244,7 @@ export class Inventory {
   closeBag(): void {
     this.bagOpen = false;
     if (this.cursor) {
-      const left = addToSlots(this.slots, this.cursor.id, this.cursor.count);
+      const left = addToSlots(this.slots, this.cursor.id, this.cursor.count, maxStackOf(this.cursor.id));
       this.cursor = left > 0 ? { id: this.cursor.id, count: left } : null;
       if (this.cursor) {
         this.trashSlots[0] = this.cursor;
@@ -253,41 +257,53 @@ export class Inventory {
     }
   }
 
-  /** 完整背包网格重绘(物品栏行 + 背包 + 丢弃栏 + 手中堆) */
+  /** 完整背包网格重绘(物品栏行 + 背包 + 装备槽 + 丢弃栏 + 手中堆) */
   refreshBag(): void {
     this.hud.buildBag(
       this.slots.slice(0, HOTBAR_SIZE).map((s) => this.bagView(s)),
       this.slots.slice(HOTBAR_SIZE).map((s) => this.bagView(s)),
+      (this.equipment?.slots ?? []).map((s) => this.bagView(s)),
+      EQUIP_SLOT_NAMES,
       this.bagView(this.trashSlots[0]),
       (area, idx, button) => this.onBagCell(area, idx, button),
     );
     this.hud.setDragGhost(this.bagView(this.cursor));
   }
 
-  /** 格子点击:空手 → 拿起(右键拿一半);持堆 → 放下/并入/交换(右键放一个) */
+  /** 格子点击:空手 → 拿起(右键拿一半);持堆 → 放下/并入/交换(右键放一个)。
+   *  装备槽有槽型校验(头盔只进头槽/饰品只进饰品槽),不匹配保持手持。 */
   private onBagCell(area: BagArea, idx: number, button: number): void {
-    const slotsOf = (a: BagArea) => (a === 'trash' ? this.trashSlots : this.slots);
-    const realIdx = area === 'bag' ? idx + HOTBAR_SIZE : area === 'trash' ? 0 : idx;
-    const arr = slotsOf(area);
+    const arr =
+      area === 'trash' ? this.trashSlots : area === 'equip' ? this.equipment?.slots : this.slots;
+    if (!arr) return;
+    const realIdx = area === 'bag' ? idx + HOTBAR_SIZE : area === 'hotbar' ? idx : idx;
     if (!this.cursor) {
       const src = arr[realIdx];
       if (!src) return;
-      const amount = button === 2 ? Math.ceil(src.count / 2) : undefined;
+      const amount = button === 2 && area !== 'equip' ? Math.ceil(src.count / 2) : undefined;
       this.cursor = liftFromSlot(arr, realIdx, amount);
+    } else if (area === 'equip') {
+      // 装备槽:槽型校验;放入/交换(装备类堆恒为 1,无并入语义)
+      if (!canEquipAt(realIdx, this.cursor.id)) {
+        this.hud.toast(`这一格只能放${EQUIP_SLOT_NAMES[realIdx]}`);
+        return;
+      }
+      this.cursor = dropToSlot(arr, realIdx, this.cursor, maxStackOf(this.cursor.id));
     } else if (button === 2) {
       // 右键:放一个
       const t = arr[realIdx];
       if (!t) {
         arr[realIdx] = { id: this.cursor.id, count: 1 };
         this.cursor.count--;
-      } else if (t.id === this.cursor.id && t.count < 999) {
+      } else if (t.id === this.cursor.id && t.count < maxStackOf(t.id)) {
         t.count++;
         this.cursor.count--;
       }
       if (this.cursor.count <= 0) this.cursor = null;
     } else {
-      this.cursor = dropToSlot(arr, realIdx, this.cursor);
+      this.cursor = dropToSlot(arr, realIdx, this.cursor, maxStackOf(this.cursor.id));
     }
+    if (area === 'equip') this.equipment?.recompute(); // 属性表即时生效
     this.refreshBag();
     this.refreshHotbar(); // 物品栏行的改动即时反映到底部快捷栏
     this.save.markDirty();
@@ -315,7 +331,7 @@ export class Inventory {
     if (!slots) {
       slots = makeSlots(CHEST_SIZE);
       const table = this.world.gen.structures.lootAt(x, y, z);
-      for (const id of CHEST_LOOT[table] ?? []) addToSlots(slots, id, 1);
+      for (const id of CHEST_LOOT[table] ?? []) addToSlots(slots, id, 1, maxStackOf(id));
       this.chestStore.set(key, slots);
     }
     return slots;
@@ -351,8 +367,10 @@ export class Inventory {
       slots.map((s) => this.bagView(s)),
       this.slots.map((s) => this.bagView(s)),
       (side, i) => {
-        if (side === 'chest') moveStack(slots, i, this.slots);
-        else moveStack(this.slots, i, slots);
+        const src = side === 'chest' ? slots : this.slots;
+        const dst = side === 'chest' ? this.slots : slots;
+        const st = src[i];
+        moveStack(src, i, dst, st ? maxStackOf(st.id) : undefined);
         this.refreshChestUI();
         this.refreshHotbar(); // 物品栏格可能被搬空/填入
         this.save.markDirty();
@@ -416,7 +434,10 @@ export class Inventory {
   /** 调试:把全部物品塞进背包(缺的补 99) */
   giveAll(): void {
     for (const id of inventoryItems()) {
-      if (!this.slots.some((s) => s?.id === id)) addToSlots(this.slots, id, 99);
+      if (!this.slots.some((s) => s?.id === id)) {
+        // 装备/饰品单堆上限 1:只给 1 件(否则 99 会拆成 99 个单件堆挤爆背包)
+        addToSlots(this.slots, id, Math.min(99, maxStackOf(id)), maxStackOf(id));
+      }
     }
     this.refreshHotbar();
     if (this.bagOpen) this.refreshBag();

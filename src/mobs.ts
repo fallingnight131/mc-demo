@@ -174,6 +174,9 @@ export class Mobs {
   daylight = false;
   /** 僵尸打中玩家:伤害与击退方向 */
   onAttack: ((dmg: number, dirX: number, dirZ: number) => void) | null = null;
+  /** 世界事件修饰:刷怪频率/上限倍数(血月加倍,worldevents 写入) */
+  spawnRateMul = 1;
+  spawnCapMul = 1;
   /** 燃烧中的敌对生物位置(白烟粒子) */
   onBurning: ((x: number, y: number, z: number) => void) | null = null;
 
@@ -325,8 +328,9 @@ export class Mobs {
   update(dt: number, playerPos: THREE.Vector3): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      this.spawnTimer = 1.6;
-      if (this.autoSpawn && this.list.length < MAX_MOBS) this.trySpawn(playerPos);
+      this.spawnTimer = 1.6 / Math.max(0.1, this.spawnRateMul);
+      const cap = Math.round(MAX_MOBS * this.spawnCapMul);
+      if (this.autoSpawn && this.list.length < cap) this.trySpawn(playerPos);
     }
 
     for (let i = this.list.length - 1; i >= 0; i--) {

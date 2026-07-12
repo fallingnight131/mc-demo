@@ -13,6 +13,7 @@ import type { Mobs } from '../mobs';
 import type { Player } from '../player';
 import type { RayHit, World } from '../world';
 import type { Sound } from '../sound';
+import { applyDefense, type StatSheet } from './stats';
 
 export const MAX_HP = 10;
 
@@ -45,13 +46,20 @@ export class Combat {
       events: EventBus;
       spawn: { x: number; y: number; z: number };
       isCreative(): boolean;
+      /** 装备聚合属性(防御/上限血量/近战倍率/摔落免疫) */
+      stats(): StatSheet;
     },
   ) {}
+
+  get maxHp(): number {
+    return this.deps.stats().maxHp;
+  }
 
   /** 玩家受伤唯一入口:创造豁免 → 扣血/击退/反馈 → 归零重生 */
   hurtPlayer(dmg: number, source: DamageSource, dirX = 0, dirZ = 0): void {
     const { player, sound, hud, events } = this.deps;
     if (this.deps.isCreative()) return; // 创造模式免疫一切伤害
+    dmg = applyDefense(dmg, this.deps.stats().defense); // 盔甲减伤(泰拉公式)
     this.hp -= dmg;
     if (dirX !== 0 || dirZ !== 0) {
       player.vel.x += dirX * 7;
@@ -60,7 +68,7 @@ export class Combat {
     }
     sound.hurt();
     hud.flashDamage();
-    hud.setHearts(this.hp);
+    hud.setHearts(this.hp, this.maxHp);
     events.emit('playerDamaged', { dmg, hp: this.hp, source });
     if (this.hp <= 0) this.respawn(source);
   }
@@ -68,19 +76,19 @@ export class Combat {
   respawn(source: DamageSource): void {
     const { player, hud, spawn, events } = this.deps;
     this.deaths++;
-    this.hp = MAX_HP;
+    this.hp = this.maxHp;
     player.pos.set(spawn.x, spawn.y + 1, spawn.z);
     player.vel.set(0, 0, 0);
-    hud.setHearts(this.hp);
+    hud.setHearts(this.hp, this.maxHp);
     hud.toast('你死了,回到出生点');
     events.emit('playerDied', { source });
     events.emit('playerRespawned', { x: spawn.x, y: spawn.y + 1, z: spawn.z });
   }
 
-  /** 调试接口(__game.setHp) */
+  /** 调试接口(__game.setHp);装备卸下后也用它把血夹回上限 */
   setHp(v: number): void {
-    this.hp = Math.max(1, Math.min(MAX_HP, v));
-    this.deps.hud.setHearts(this.hp);
+    this.hp = Math.max(1, Math.min(this.maxHp, v));
+    this.deps.hud.setHearts(this.hp, this.maxHp);
   }
 
   /**
@@ -99,14 +107,16 @@ export class Combat {
         const w = weaponOf(inventory.heldId());
         if (w !== FIST) sound.swing();
         sound.mobVoice(mhit.mob.kind, 0.8, true);
+        // 近战伤害倍率(装备/饰品聚合)
+        const dmg = Math.max(1, Math.round(w.damage * this.deps.stats().meleeDamage));
         const b = mhit.mob.body;
         events.emit('mobDamaged', {
           kind: mhit.mob.kind,
           x: b.pos.x,
           y: b.pos.y,
           z: b.pos.z,
-          hp: mobs.hurt(mhit, dir, w.damage, w.knockback, w.knockUp),
-          dmg: w.damage,
+          hp: mobs.hurt(mhit, dir, dmg, w.knockback, w.knockUp),
+          dmg,
         });
         return { attacked: true, bhit };
       }
@@ -122,12 +132,12 @@ export class Combat {
   /** 生命体征:缓慢回血 + 岩浆接触伤害(仅游戏进行中) */
   updateVitals(dt: number, active: boolean): void {
     const { player, world } = this.deps;
-    if (this.hp < MAX_HP && active) {
+    if (this.hp < this.maxHp && active) {
       this.regenTimer += dt;
       if (this.regenTimer >= 4) {
         this.regenTimer = 0;
-        this.hp = Math.min(MAX_HP, this.hp + 1);
-        this.deps.hud.setHearts(this.hp);
+        this.hp = Math.min(this.maxHp, this.hp + 1);
+        this.deps.hud.setHearts(this.hp, this.maxHp);
       }
     }
     if (active) {
@@ -176,7 +186,12 @@ export class Combat {
       this.stepAcc = 1.6;
     } else {
       if (this.wasAirborne && this.minFallVy < -9 && feet !== Block.Air) sound.step(feet, 1.8);
-      if (this.wasAirborne && this.minFallVy < -19 && !player.isInWater()) {
+      if (
+        this.wasAirborne &&
+        this.minFallVy < -19 &&
+        !player.isInWater() &&
+        !this.deps.stats().noFallDamage // 幸运马蹄铁式免疫
+      ) {
         this.hurtPlayer(Math.min(10, Math.ceil((-this.minFallVy - 19) / 2.2)), 'fall');
       }
       this.minFallVy = 0;

@@ -16,12 +16,14 @@ import { Ambience, layerNameOf } from './game/ambience';
 import { buildCodexCategories } from './game/codex';
 import { Combat } from './game/combat';
 import { EntityManager } from './game/entities';
+import { Equipment } from './game/equipment';
 import { Flags } from './game/flags';
 import { Interact } from './game/interact';
 import { Inventory, HOTBAR_SIZE } from './game/inventory';
 import { Projectiles } from './game/projectiles';
 import { TntSystem } from './game/tnt';
 import { View } from './game/view';
+import { WorldEvents } from './game/worldevents';
 import { HUD } from './hud';
 import { ItemDrops } from './items';
 import { Mobs, type MobKind } from './mobs';
@@ -122,7 +124,7 @@ const sky = new Sky();
 scene.add(sky.group);
 const particles = new Particles(mats.textures.atlas, world);
 scene.add(particles.points);
-const drops = new ItemDrops(mats.textures.atlas, world);
+const drops = new ItemDrops(mats.textures.atlas, world, (id) => mats.textures.toolIconFor(id));
 scene.add(drops.group);
 const falling = new FallingBlocks(mats.textures.atlas, world);
 scene.add(falling.group);
@@ -151,7 +153,13 @@ world.water.onWashed = (x, y, z, id) => {
 falling.onLand = (x, y, z, id) => sound.place(id);
 
 // --- 游戏系统 ---
+// 装备与属性表(ARCHITECTURE.md §3.8b):聚合结果供物理/战斗/挖掘只读
+const equipment = new Equipment(save);
+equipment.registerSave();
+player.stats = () => equipment.stats;
+
 const inventory = new Inventory(hud, mats.textures, world, save, events);
+inventory.equipment = equipment;
 inventory.isCreative = () => player.creative;
 inventory.selectedSlot = Math.min(Math.max(start.slot, 0), HOTBAR_SIZE - 1);
 inventory.registerSave();
@@ -180,14 +188,20 @@ const combat = new Combat({
   events,
   spawn,
   isCreative: () => player.creative,
+  stats: () => equipment.stats,
 });
 save.register('hp', {
   save: () => combat.hp,
   load: (d) => {
-    if (typeof d === 'number') combat.hp = Math.max(1, Math.min(10, d));
+    if (typeof d === 'number') combat.hp = Math.max(1, Math.min(combat.maxHp, d));
   },
 });
-hud.setHearts(combat.hp);
+hud.setHearts(combat.hp, combat.maxHp);
+// 装备变化:血量上限可能改变 —— 夹回上限并重画心条;背包面板开着则重绘
+equipment.onChanged = () => {
+  if (combat.hp > combat.maxHp) combat.setHp(combat.maxHp);
+  hud.setHearts(combat.hp, combat.maxHp);
+};
 
 const view = new View(camera, player, world, hud, mats.textures, inventory, particles);
 scene.add(view.model.group);
@@ -230,6 +244,24 @@ scene.add(projectiles.group);
 const ambience = new Ambience(scene, camera, sky, world, player, sound, particles, mats);
 save.register('time', ambience);
 
+// 世界事件(ARCHITECTURE.md §3.8c):血月等;修饰推给刷怪与氛围
+const worldEvents = new WorldEvents(
+  {
+    setSpawnTuning: (rate, cap) => {
+      mobs.spawnRateMul = rate;
+      mobs.spawnCapMul = cap;
+    },
+    setFogTint: (tint) => {
+      ambience.eventFogTint = tint;
+    },
+    toast: (msg) => hud.toast(msg),
+  },
+  events,
+  flags,
+  save,
+);
+worldEvents.registerSave();
+
 const interact = new Interact({
   scene,
   world,
@@ -242,6 +274,7 @@ const interact = new Interact({
   events,
   onSwing: () => view.swingArm(),
   lookDir: (out) => view.lookDir(out),
+  stats: () => equipment.stats,
 });
 // 方块点按注册表:宝箱开箱;手持打火石点燃 TNT(因此 TNT 可互相堆叠)
 interact.registerBlockUse(Block.Chest, (hit) => {
@@ -508,6 +541,7 @@ function frame(now: number): void {
   view.setBrightness(bright);
   mobs.nightFactor = ambience.dn.starAlpha;
   mobs.daylight = ambience.dn.brightness > 0.55;
+  if (input.locked) worldEvents.update(ambience.dn); // 黄昏掷骰/黎明结束
 
   // 回血 + 岩浆接触伤害
   combat.updateVitals(dt, input.locked);
@@ -585,6 +619,7 @@ hud.setOverlayVisible(true, false);
 // ⚠ 该接口是 e2e 的契约(ARCHITECTURE.md §6.3):字段只增不改。
 if (new URLSearchParams(location.search).has('test')) {
   input.forceLock();
+  worldEvents.rng = () => 1; // 测试模式:事件只由 __game.worldEvents.start 显式触发
   (window as unknown as Record<string, unknown>).__game = {
     world,
     player,
@@ -647,6 +682,16 @@ if (new URLSearchParams(location.search).has('test')) {
       hellForts: world.gen.structures.hellForts,
     }),
     setHp: (v: number) => combat.setHp(v),
+    equip: {
+      stats: () => ({ ...equipment.stats }),
+      slots: () => equipment.slots.map((s) => s?.id ?? 0),
+    },
+    worldEvents: {
+      active: () => worldEvents.active,
+      start: (id: string) => worldEvents.start(id),
+      stop: () => worldEvents.stop(),
+      spawnTuning: () => ({ rate: mobs.spawnRateMul, cap: mobs.spawnCapMul }),
+    },
     mobs: {
       count: () => mobs.count,
       list: () => mobs.debugList(),

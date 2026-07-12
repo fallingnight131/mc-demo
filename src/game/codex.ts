@@ -4,7 +4,7 @@ import { Block } from '../blocks';
 import { itemDesc, itemIcon, itemName, type IconSource } from '../content/items';
 import type { CodexCategory } from '../hud';
 import { buildMobTextures } from '../textures';
-import { Tool } from '../tools';
+import { Equip, Tool } from '../tools';
 
 const entry = (icons: IconSource, id: number) => ({
   icon: itemIcon(icons, id),
@@ -49,6 +49,13 @@ export function buildCodexCategories(icons: IconSource): CodexCategory[] {
     {
       title: '工具 · 武器',
       entries: [Tool.Sword, Tool.Pickaxe, Tool.Axe, Tool.FlintSteel].map(e),
+    },
+    {
+      title: '装备 · 饰品',
+      entries: [
+        Equip.IronHelmet, Equip.IronChest, Equip.IronLegs,
+        Equip.SwiftCharm, Equip.CloudBottle, Equip.Horseshoe,
+      ].map(e),
     },
     {
       title: '植被 · 依环境生长',

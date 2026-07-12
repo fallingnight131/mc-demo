@@ -48,6 +48,8 @@ export interface InteractDeps {
   onSwing(): void;
   /** 视线方向(view 提供) */
   lookDir(out: THREE.Vector3): THREE.Vector3;
+  /** 装备聚合属性(挖掘速度乘数) */
+  stats(): { miningSpeed: number };
 }
 
 export class Interact {
@@ -231,8 +233,8 @@ export class Interact {
             hitTimer: 0,
           };
         }
-        // 挖掘倍速按注册表结算(镐→石类 / 斧→木类)
-        this.mining.progress += dt * miningBoost(held, hit.id);
+        // 挖掘倍速按注册表结算(镐→石类 / 斧→木类)× 装备挖速
+        this.mining.progress += dt * miningBoost(held, hit.id) * this.deps.stats().miningSpeed;
         this.mining.hitTimer -= dt;
         if (this.mining.hitTimer <= 0) {
           this.deps.sound.hit(hit.id);

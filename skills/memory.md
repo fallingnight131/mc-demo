@@ -19,7 +19,12 @@
 
 - **新功能必须按 `ARCHITECTURE.md` 的扩展点接入**,不要往 main.ts 加规则代码。
   main.ts 只做组装(现 611 行,保持这个量级)。
-- 加内容的入口速查:
+- 加内容的入口速查(m57 新增两类):
+  - **装备/饰品** → `content/items.ts` 注册 armor/accessory 字段(§4.7),
+    属性经 `game/stats.ts` StatSheet 聚合自动生效;新行为才加字段+消费点;
+  - **世界事件** → `content/events.ts` 注册 WorldEventDef(§4.8),
+    修饰推给 mobs.spawnRateMul/ambience.eventFogTint;`?test` 禁自然掷骰,
+    e2e 用 `__game.worldEvents.start/stop`;
   - 方块 → `blocks.ts` + `textures.ts`(§4.1);物品/**武器** → `content/items.ts`
     注册 ItemDef/WeaponDef(§4.2,战斗/挖掘自动生效);
   - 点按交互(门/祭坛/恶魔之心)→ `interact.registerBlockUse`;

@@ -630,7 +630,7 @@ const codexClosed = await page.evaluate(
 await page.evaluate(() => document.getElementById('overlay').classList.add('hidden'));
 check(
   '图鉴:设置打开分类展示',
-  codex.open && codex.cats === 6 && codex.entries >= 35 && codexClosed,
+  codex.open && codex.cats === 7 && codex.entries >= 40 && codexClosed,
   `打开 ${codex.open},分类 ${codex.cats},条目 ${codex.entries},关闭 ${codexClosed}`,
 );
 
@@ -2644,6 +2644,140 @@ check(
     migrated.stone === 50 &&
     migrated.log === 7,
   `迁移后 [${migrated.bar.slice(0, 3).join(',')}](应 3,0,8:重复引用清空),石头 ×${migrated.stone},原木 ×${migrated.log}(进背包区)`,
+);
+
+// --- 里程碑 57:装备/饰品(属性管线)+ 世界事件(血月) ---
+// 装备:拖铁头盔 → 头槽(槽型校验:饰品槽拒绝);防御让僵尸 2 伤减为 1
+await page.evaluate(() => {
+  window.__game.ui.giveAll(); // 铁甲/饰品各 1 件入包
+  window.__game.setCreative(false);
+  window.__game.mobs.setAutoSpawn(false);
+  window.__game.mobs.clear();
+});
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(250);
+await page.click('#bag-main .bag-slot.filled[title="铁头盔"]'); // 拿起头盔
+await page.waitForTimeout(120);
+await page.click('#bag-equip .bag-slot:nth-child(5)'); // 饰品槽:应被拒(仍在手上)
+await page.waitForTimeout(120);
+const wrongSlot = await page.evaluate(() => ({
+  ghost: document.getElementById('drag-ghost').classList.contains('show'),
+  acc: window.__game.equip.slots()[4],
+}));
+await page.click('#bag-equip .bag-slot:nth-child(1)'); // 头槽:放入
+await page.waitForTimeout(120);
+await page.click('#bag-main .bag-slot.filled[title="疾风护符"]'); // 饰品 → 饰品槽
+await page.waitForTimeout(120);
+await page.click('#bag-equip .bag-slot:nth-child(4)');
+await page.waitForTimeout(120);
+const equipped = await page.evaluate(() => ({
+  slots: window.__game.equip.slots(),
+  stats: window.__game.equip.stats(),
+}));
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(200);
+check(
+  '装备:槽型校验 + 属性聚合',
+  wrongSlot.ghost &&
+    wrongSlot.acc === 0 &&
+    equipped.slots[0] === 110 &&
+    equipped.slots[3] === 120 &&
+    equipped.stats.defense === 2 &&
+    Math.abs(equipped.stats.moveSpeed - 1.25) < 1e-6,
+  `头盔进饰品槽被拒(仍持有 ${wrongSlot.ghost}),装备后槽 [${equipped.slots[0]},${equipped.slots[3]}],` +
+    `防御 ${equipped.stats.defense},移速 ×${equipped.stats.moveSpeed}`,
+);
+
+// 防御实战:铁头盔(防 2)把僵尸 2 伤减为 1
+await page.evaluate(() => {
+  const g = window.__game;
+  g.setHp(10);
+  g.setTime(0.75); // 午夜(僵尸不燃烧)
+  const s = g.spawn;
+  const x = Math.floor(s.x) + 4;
+  const z = Math.floor(s.z) + 4;
+  const h = g.world.gen.heightAt(x, z);
+  g.player.pos.set(x + 0.5, h + 1.01, z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.mobs.spawnAt(x + 1.2, h + 1.01, z + 0.5, 'zombie');
+});
+let hpAfterHit = 10;
+for (let i = 0; i < 20 && hpAfterHit === 10; i++) {
+  await page.waitForTimeout(200);
+  hpAfterHit = await page.evaluate(() => window.__game.hp());
+}
+await page.evaluate(() => {
+  window.__game.mobs.clear();
+  window.__game.setTime(0.3);
+  window.__game.setHp(10);
+});
+check(
+  '装备防御:僵尸 2 伤 → 1(泰拉减伤公式)',
+  hpAfterHit === 9,
+  `首次受击后 HP=${hpAfterHit}(应 9;无甲为 8)`,
+);
+
+// 疾风护符:步行速度 ×1.25(峰值采样)
+await page.evaluate(() => {
+  const g = window.__game;
+  const s = g.spawn;
+  g.player.pos.set(s.x + 0.5, s.y + 1.2, s.z + 0.5);
+  g.player.vel.set(0, 0, 0);
+  g.player.yaw = Math.PI; // 朝 +z 开阔处
+});
+await page.keyboard.down('KeyW');
+let peakSpeed = 0;
+for (let i = 0; i < 10; i++) {
+  await page.waitForTimeout(100);
+  const v = await page.evaluate(() => {
+    const p = window.__game.player.vel;
+    return Math.hypot(p.x, p.z);
+  });
+  peakSpeed = Math.max(peakSpeed, v);
+}
+await page.keyboard.up('KeyW');
+check(
+  '饰品移速:疾风护符步行 ×1.25',
+  peakSpeed > 5.2 && peakSpeed < 6.2,
+  `步行峰值 ${peakSpeed.toFixed(2)} m/s(基础 4.5,应 ≈5.63)`,
+);
+
+// 世界事件:血月 —— 红雾 + 刷怪倍率 + 公告;黎明自动结束
+await page.evaluate(() => window.__game.setTime(0.25)); // 正午基线
+await page.waitForTimeout(150);
+const fogBase = await page.evaluate(() => window.__game.env().fog);
+await page.evaluate(() => window.__game.worldEvents.start('bloodMoon'));
+await page.waitForTimeout(200);
+const bloodMoon = await page.evaluate(() => ({
+  active: window.__game.worldEvents.active(),
+  tuning: window.__game.worldEvents.spawnTuning(),
+  fog: window.__game.env().fog,
+  toast: document.getElementById('item-name').textContent,
+}));
+// 黎明结束:先入夜再入昼,黎明沿触发 stop
+await page.evaluate(() => window.__game.setTime(0.75));
+await page.waitForTimeout(250);
+await page.evaluate(() => window.__game.setTime(0.05));
+await page.waitForTimeout(250);
+const afterDawn = await page.evaluate(() => ({
+  active: window.__game.worldEvents.active(),
+  tuning: window.__game.worldEvents.spawnTuning(),
+  fog: window.__game.env().fog,
+}));
+const redShift = bloodMoon.fog[0] / Math.max(0.01, bloodMoon.fog[1]);
+const baseShift = fogBase[0] / Math.max(0.01, fogBase[1]);
+check(
+  '世界事件:血月红雾/刷怪加倍/黎明结束',
+  bloodMoon.active === 'bloodMoon' &&
+    bloodMoon.tuning.rate === 3 &&
+    bloodMoon.tuning.cap === 2.5 &&
+    redShift > baseShift * 1.4 &&
+    bloodMoon.toast.includes('血月') &&
+    afterDawn.active === null &&
+    afterDawn.tuning.rate === 1,
+  `active=${bloodMoon.active},倍率 ${bloodMoon.tuning.rate}/${bloodMoon.tuning.cap},` +
+    `雾红比 ${baseShift.toFixed(2)}→${redShift.toFixed(2)},公告"${bloodMoon.toast}";` +
+    `黎明后 active=${afterDawn.active},倍率复位 ${afterDawn.tuning.rate}`,
 );
 
 // --- 里程碑 53:账号 + 云存档链路(独立浏览器上下文;?test&account=1 启用网络) ---

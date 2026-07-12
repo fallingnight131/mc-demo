@@ -4,10 +4,23 @@
 // 加一件武器 = 注册一条数据 + 图标,战斗系统零改动。
 // 纯数据模块:不触碰 DOM / Three.js,可在 vitest 裸测;图标解析见 itemIcon()。
 import { baseBlock, Block, BLOCK_DEFS, PLACEABLE } from '../blocks';
+import { STACK_MAX } from '../chest';
 import { materialOf } from '../sound';
-import { Tool, TOOL_DEFS } from '../tools';
+import { Equip, Tool, TOOL_DEFS } from '../tools';
+import type { StatMods } from '../game/stats';
 
-export type ItemKind = 'block' | 'tool' | 'weapon';
+export type ItemKind = 'block' | 'tool' | 'weapon' | 'armor' | 'accessory';
+
+/** 盔甲件:槽型 + 防御 */
+export interface ArmorDef {
+  slot: 'head' | 'body' | 'legs';
+  defense: number;
+}
+
+/** 饰品:属性加成(聚合见 game/stats.ts) */
+export interface AccessoryDef {
+  stats: Partial<StatMods>;
+}
 
 /** 挥动时发射的弹幕(泰拉之刃剑气、未来的远程/魔法武器) */
 export interface ProjectileSpawn {
@@ -44,6 +57,8 @@ export interface ItemDef {
   kind: ItemKind;
   /** 图鉴/悬浮提示说明 */
   desc: string;
+  /** 单堆上限(装备/饰品 = 1;缺省 STACK_MAX) */
+  maxStack?: number;
   /** kind=block:对应的可放置方块 id */
   block?: number;
   /** 挖掘加速类别(镐对石类 / 斧对木类) */
@@ -52,6 +67,10 @@ export interface ItemDef {
   toolPower?: number;
   /** kind=weapon 必填 */
   weapon?: WeaponDef;
+  /** kind=armor 必填 */
+  armor?: ArmorDef;
+  /** kind=accessory 必填 */
+  accessory?: AccessoryDef;
 }
 
 /** 徒手(以及一切非武器物品)的战斗参数 */
@@ -125,6 +144,23 @@ defs.set(Tool.Sword, {
   weapon: { damage: 2, knockback: 6, knockUp: 4.4, cooldown: 0, noMining: true },
 });
 
+// 装备与饰品(ARCHITECTURE.md §4.7:注册数据 + 图标即生效,规则系统零改动)
+const armor = (id: number, name: string, slot: ArmorDef['slot'], defense: number) =>
+  defs.set(id, {
+    id, name, kind: 'armor', maxStack: 1,
+    desc: `${{ head: '头盔', body: '护胸', legs: '护腿' }[slot]} · 防御 +${defense}`,
+    armor: { slot, defense },
+  });
+const accessory = (id: number, name: string, desc: string, stats: Partial<StatMods>) =>
+  defs.set(id, { id, name, kind: 'accessory', maxStack: 1, desc, accessory: { stats } });
+
+armor(Equip.IronHelmet, '铁头盔', 'head', 2);
+armor(Equip.IronChest, '铁护胸', 'body', 3);
+armor(Equip.IronLegs, '铁护腿', 'legs', 2);
+accessory(Equip.SwiftCharm, '疾风护符', '移动速度 +25%', { moveSpeed: 0.25 });
+accessory(Equip.CloudBottle, '云朵瓶', '可以二段跳', { extraJumps: 1 });
+accessory(Equip.Horseshoe, '幸运马蹄铁', '免疫摔落伤害', { noFallDamage: true });
+
 export function itemDef(id: number): ItemDef | undefined {
   return defs.get(id);
 }
@@ -146,6 +182,11 @@ export function weaponOf(id: number): WeaponDef {
 /** 手持该物品能否挖掘(剑类武器不能) */
 export function canMineWith(id: number): boolean {
   return !defs.get(id)?.weapon?.noMining;
+}
+
+/** 单堆上限(装备/饰品 1,其余 999) */
+export function maxStackOf(id: number): number {
+  return defs.get(id)?.maxStack ?? STACK_MAX;
 }
 
 /** 手持物品对指定方块的挖掘倍速(镐→石类 / 斧→木类) */

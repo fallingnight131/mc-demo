@@ -29,8 +29,8 @@ export interface ChestSlotView {
 
 /** 背包网格格子视图(null = 空格) */
 export type BagSlotView = ChestSlotView | null;
-/** 背包网格分区:物品栏行 / 背包区 / 丢弃栏 */
-export type BagArea = 'hotbar' | 'bag' | 'trash';
+/** 背包网格分区:物品栏行 / 背包区 / 装备槽 / 丢弃栏 */
+export type BagArea = 'hotbar' | 'bag' | 'equip' | 'trash';
 
 /** 图标画布可能同时出现在快捷栏与背包的多个槽位,DOM 中必须用副本 */
 function copyIcon(src: HTMLCanvasElement): HTMLCanvasElement {
@@ -117,10 +117,17 @@ export class HUD {
   buildBag(
     hot: BagSlotView[],
     bag: BagSlotView[],
+    equip: BagSlotView[],
+    equipLabels: string[],
     trash: BagSlotView,
     onCell: (area: BagArea, idx: number, button: number) => void,
   ): void {
-    const renderGrid = (el: HTMLElement, views: BagSlotView[], area: BagArea) => {
+    const renderGrid = (
+      el: HTMLElement,
+      views: BagSlotView[],
+      area: BagArea,
+      labels?: string[],
+    ) => {
       el.innerHTML = '';
       views.forEach((v, i) => {
         const cell = document.createElement('div');
@@ -134,6 +141,11 @@ export class HUD {
             c.textContent = String(Math.min(v.count, 999));
             cell.appendChild(c);
           }
+        } else if (labels?.[i]) {
+          const hint = document.createElement('span');
+          hint.className = 'bag-slot-hint';
+          hint.textContent = labels[i];
+          cell.appendChild(hint);
         }
         cell.addEventListener('mousedown', (e) => {
           e.preventDefault();
@@ -146,6 +158,7 @@ export class HUD {
     };
     renderGrid(document.getElementById('bag-hotbar')!, hot, 'hotbar');
     renderGrid(document.getElementById('bag-main')!, bag, 'bag');
+    renderGrid(document.getElementById('bag-equip')!, equip, 'equip', equipLabels);
     renderGrid(document.getElementById('bag-trash')!, [trash], 'trash');
   }
 
@@ -293,11 +306,11 @@ export class HUD {
     this.hand.style.display = v ? '' : 'none';
   }
 
-  /** 生命值心条:hp 0..10,每颗心 2 点(满/半/空) */
-  setHearts(hp: number): void {
+  /** 生命值心条:每颗心 2 点(满/半/空);maxHp 随装备变化(默认 10 = 5 颗) */
+  setHearts(hp: number, maxHp = 10): void {
     const el = document.getElementById('hearts')!;
     let html = '';
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < Math.ceil(maxHp / 2); i++) {
       const v = hp - i * 2;
       const cls = v >= 2 ? 'full' : v >= 1 ? 'half' : 'empty';
       html += `<span class="heart ${cls}">\u2764</span>`;

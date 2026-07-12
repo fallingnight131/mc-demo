@@ -19,6 +19,15 @@ export interface PlayerInput {
   sprint: boolean;
 }
 
+/** 装备/饰品提供的机动性加成(main 注入 equipment.stats;物理层不 import 上层) */
+export interface MobilityStats {
+  moveSpeed: number; // 乘数
+  jumpBoost: number; // 乘数
+  extraJumps: number; // 空中额外跳跃次数
+}
+
+const NEUTRAL_MOBILITY: MobilityStats = Object.freeze({ moveSpeed: 1, jumpBoost: 1, extraJumps: 0 });
+
 /** 玩家物理只依赖这个最小接口,便于无渲染环境下测试 */
 export interface BlockWorld {
   isSolid(x: number, y: number, z: number): boolean;
@@ -43,7 +52,12 @@ export class Player {
   onGround = false;
   /** 创造模式:飞行观察世界(空格升 / Shift 降),伤害豁免由上层处理 */
   creative = false;
+  /** 机动性属性来源(装备聚合;默认中性) */
+  stats: () => MobilityStats = () => NEUTRAL_MOBILITY;
   private hitWall = false; // 本子步内是否发生水平碰撞(用于出水攀爬)
+  private prevJump = false; // 跳跃键沿检测(二段跳需要"新按下")
+  private jumpPressedFrame = false;
+  private airJumps = 0;
 
   constructor(private readonly world: BlockWorld) {}
 
@@ -73,6 +87,8 @@ export class Player {
   }
 
   update(dt: number, input: PlayerInput): void {
+    this.jumpPressedFrame = input.jump && !this.prevJump;
+    this.prevJump = input.jump;
     this.stepPhysics(dt, input);
     // 空气墙:世界为有限圆域,超出边界把玩家径向推回(Terraria 3D)
     const r = Math.hypot(this.pos.x, this.pos.z);
@@ -127,10 +143,11 @@ export class Player {
     }
     const submerged = this.isInWater(); // 身体中心没入水中
     const feetInWater = this.isTouchingWater(); // 至少脚部在水里(含水面过渡区)
+    const mob = this.stats();
 
-    // 水平目标速度(基于朝向):水中略减速
+    // 水平目标速度(基于朝向):水中略减速;装备移速乘数
     const speedFactor = submerged ? 0.6 : feetInWater ? 0.85 : 1;
-    const speed = (input.sprint ? SPRINT_SPEED : WALK_SPEED) * speedFactor;
+    const speed = (input.sprint ? SPRINT_SPEED : WALK_SPEED) * speedFactor * mob.moveSpeed;
     const s = Math.sin(this.yaw);
     const c = Math.cos(this.yaw);
     let tx = -s * input.forward + c * input.strafe;
@@ -164,7 +181,15 @@ export class Player {
         this.vel.y = Math.max(this.vel.y - 14 * dt, -50);
       }
     } else {
-      if (input.jump && this.onGround) this.vel.y = JUMP_SPEED;
+      if (this.onGround) this.airJumps = mob.extraJumps; // 落地补充空中跳
+      if (input.jump && this.onGround) {
+        this.vel.y = JUMP_SPEED * mob.jumpBoost;
+      } else if (this.jumpPressedFrame && !this.onGround && this.airJumps > 0) {
+        // 二段跳(云朵瓶式):空中"新按下"跳跃键
+        this.vel.y = JUMP_SPEED * mob.jumpBoost;
+        this.airJumps--;
+        this.jumpPressedFrame = false;
+      }
       this.vel.y = Math.max(this.vel.y - GRAVITY * dt, -50);
     }
 

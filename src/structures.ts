@@ -27,12 +27,13 @@ interface Box {
 
 export type LootTable = 'tree' | 'sky' | 'dungeon' | 'hell';
 
-/** 宝箱战利品表(按所在地标) */
+/** 宝箱战利品表(按所在地标);装备/饰品分布:树=护符,天空=云朵瓶,
+ *  地牢=铁盔/铁胸,地狱=铁腿/马蹄铁(id 见 tools.Equip,数据在 content/items) */
 export const CHEST_LOOT: Record<LootTable, number[]> = {
-  tree: [Block.Torch, Block.Torch, Block.Torch, Block.Plank, Block.Plank, Block.Glowstone, Block.GoldOre, Block.Pumpkin],
-  sky: [Block.Glowstone, Block.Glowstone, Block.GoldBlock, Block.GoldBlock, Block.DiamondBlock, Block.Cloud, Block.Cloud, Block.Cloud],
-  dungeon: [Block.TNT, Block.TNT, Block.IronBlock, Block.IronBlock, Block.GoldBlock, Block.Glowstone, Block.Glowstone, Block.DiamondOre, Block.DiamondOre],
-  hell: [Block.Hellstone, Block.Hellstone, Block.Hellstone, Block.Obsidian, Block.Obsidian, Block.TNT, Block.TNT, Block.DiamondBlock, Block.Glowstone],
+  tree: [Block.Torch, Block.Torch, Block.Torch, Block.Plank, Block.Plank, Block.Glowstone, Block.GoldOre, Block.Pumpkin, 120],
+  sky: [Block.Glowstone, Block.Glowstone, Block.GoldBlock, Block.GoldBlock, Block.DiamondBlock, Block.Cloud, Block.Cloud, Block.Cloud, 121],
+  dungeon: [Block.TNT, Block.TNT, Block.IronBlock, Block.IronBlock, Block.GoldBlock, Block.Glowstone, Block.Glowstone, Block.DiamondOre, Block.DiamondOre, 110, 111],
+  hell: [Block.Hellstone, Block.Hellstone, Block.Hellstone, Block.Obsidian, Block.Obsidian, Block.TNT, Block.TNT, Block.DiamondBlock, Block.Glowstone, 112, 122],
 };
 
 const TWO_PI = Math.PI * 2;

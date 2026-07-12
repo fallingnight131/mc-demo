@@ -29,10 +29,34 @@ export class ItemDrops {
   private readonly drops: Drop[] = [];
   private readonly geoCache = new Map<number, THREE.BufferGeometry>();
   private readonly material: THREE.MeshBasicMaterial;
+  /** 非方块物品(工具/装备,id ≥ 100)的图标面片材质(按 id 缓存,随昼夜变暗) */
+  private readonly itemMats = new Map<number, THREE.MeshBasicMaterial>();
+  private readonly itemGeo = new THREE.PlaneGeometry(0.42, 0.42);
 
-  constructor(atlas: THREE.Texture, private readonly world: GroundQuery) {
+  constructor(
+    atlas: THREE.Texture,
+    private readonly world: GroundQuery,
+    private readonly itemIcon: ((id: number) => HTMLCanvasElement) | null = null,
+  ) {
     // alphaTest:玻璃等镂空纹理的透明像素不渲染(否则显示为黑色)
     this.material = new THREE.MeshBasicMaterial({ map: atlas, alphaTest: 0.5 });
+  }
+
+  private itemMaterial(id: number): THREE.MeshBasicMaterial {
+    let mat = this.itemMats.get(id);
+    if (!mat) {
+      const tex = new THREE.CanvasTexture(this.itemIcon!(id));
+      tex.magFilter = THREE.NearestFilter;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      mat = new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        alphaTest: 0.4,
+        side: THREE.DoubleSide,
+      });
+      this.itemMats.set(id, mat);
+    }
+    return mat;
   }
 
   get count(): number {
@@ -42,10 +66,25 @@ export class ItemDrops {
   /** 昼夜亮度 */
   setBrightness(b: number): void {
     this.material.color.setScalar(b);
+    for (const m of this.itemMats.values()) m.color.setScalar(b);
   }
 
   spawn(bx: number, by: number, bz: number, id: number): void {
     if (this.drops.length >= MAX_DROPS) this.remove(0); // 顶掉最旧的
+    // 工具/装备(非方块 id):图标面片;没有图标源则不生成实体(数据仍可经宝箱获得)
+    if (id >= 100) {
+      if (!this.itemIcon) return;
+      const plane = new THREE.Mesh(this.itemGeo, this.itemMaterial(id));
+      plane.position.set(bx + 0.5, by + 0.4, bz + 0.5);
+      this.group.add(plane);
+      this.drops.push({
+        mesh: plane,
+        vel: new THREE.Vector3((Math.random() - 0.5) * 2, 2.5 + Math.random(), (Math.random() - 0.5) * 2),
+        age: 0,
+        id,
+      });
+      return;
+    }
     let geo = this.geoCache.get(id);
     if (!geo) {
       geo = buildBlockGeometry(id, SIZE);

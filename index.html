@@ -480,6 +480,19 @@
       .bag-trash {
         grid-template-columns: 44px;
       }
+      .bag-grid-equip {
+        grid-template-columns: repeat(8, 1fr);
+        max-width: 82%;
+      }
+      #bag-equip .bag-slot {
+        border-color: rgba(120, 170, 224, 0.5);
+        background: rgba(120, 170, 224, 0.08);
+      }
+      .bag-slot-hint {
+        font-size: 10px;
+        color: #6d82a3;
+        pointer-events: none;
+      }
       .bag-trash .bag-slot {
         border-color: rgba(224, 108, 108, 0.55);
         background: rgba(224, 108, 108, 0.1);
@@ -1091,6 +1104,8 @@
           <div id="bag-hotbar" class="bag-grid"></div>
           <div class="bag-label">背包</div>
           <div id="bag-main" class="bag-grid"></div>
+          <div class="bag-label">装备 — 头 / 身 / 腿 + 饰品 ×5</div>
+          <div id="bag-equip" class="bag-grid bag-grid-equip"></div>
           <div class="bag-foot">
             <span class="bag-label">丢弃栏 🗑</span>
             <div id="bag-trash" class="bag-grid bag-trash"></div>

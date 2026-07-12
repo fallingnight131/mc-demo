@@ -23,6 +23,16 @@ export const TOOL_DEFS: Record<number, ToolDef> = {
 
 export const TOOL_IDS: number[] = Object.keys(TOOL_DEFS).map(Number);
 
+// 装备/饰品 id(100+ 物品空间;数据在 content/items.ts 注册,ARCHITECTURE.md §4.7)
+export const Equip = {
+  IronHelmet: 110, // 铁头盔(头)
+  IronChest: 111, // 铁护胸(身)
+  IronLegs: 112, // 铁护腿(腿)
+  SwiftCharm: 120, // 疾风护符(移速)
+  CloudBottle: 121, // 云朵瓶(二段跳)
+  Horseshoe: 122, // 幸运马蹄铁(摔落免疫)
+} as const;
+
 export function isTool(id: number): boolean {
   return id >= 100;
 }

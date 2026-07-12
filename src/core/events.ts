@@ -21,6 +21,9 @@ export interface GameEvents {
   chestOpened: { x: number; y: number; z: number };
   /** 世界进度旗标变化(boss 击败/事件解锁,见 game/flags.ts) */
   flagChanged: { key: string; value: number | boolean };
+  /** 世界事件开始/结束(血月/南瓜月,见 game/worldevents.ts) */
+  worldEventStarted: { id: string };
+  worldEventEnded: { id: string };
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

@@ -42,6 +42,9 @@ export class Ambience implements SaveSection {
   /** 深度调制后的世界亮度(分发给各渲染系统) */
   brightness = 1;
   private wasUnderwater = false;
+  /** 世界事件的雾色修饰(血月红雾;worldevents 写入,null = 无事件) */
+  eventFogTint: { color: number; strength: number } | null = null;
+  private readonly eventTintColor = new THREE.Color();
   private readonly fogFar: number;
   private readonly waterTintEl = document.getElementById('water-tint')!;
   private ambienceTimer = 0;
@@ -144,6 +147,11 @@ export class Ambience implements SaveSection {
       if (biome === 'jungle') fog.color.lerp(JUNGLE_TINT, 0.22);
       else if (biome === 'corruption') fog.color.lerp(CORRUPT_TINT, 0.3);
       else if (biome === 'crimson') fog.color.lerp(CRIMSON_TINT, 0.3);
+      // 世界事件色调(血月红雾)盖在群系色调之上
+      if (this.eventFogTint) {
+        this.eventTintColor.set(this.eventFogTint.color);
+        fog.color.lerp(this.eventTintColor, this.eventFogTint.strength);
+      }
       fog.near = this.fogFar * 0.55;
       fog.far = this.fogFar;
     }
