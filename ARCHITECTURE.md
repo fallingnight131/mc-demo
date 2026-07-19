@@ -42,10 +42,10 @@
 ```
 ┌─ 入口层  main.ts                     组装根:构造、接线、主循环调度(目标 < 400 行)
 ├─ 系统层  src/game/*.ts               游戏规则:combat / mining / interact / inventory /
-│                                      tnt / ambience / spawner(未来: bosses / npcs / events)
+│                                      crafting / tnt / ambience / spawner(未来: bosses / npcs)
 ├─ 实体层  src/game/entities.ts        统一实体生命周期;projectiles / drops / falling / mobs
 ├─ UI 层   src/ui/*.ts + hud.ts        面板管理(模态栈+指针锁)、HUD 部件、touch
-├─ 内容层  src/content/*.ts + blocks/tools  注册表:物品(含武器)、方块、战利品、图鉴
+├─ 内容层  src/content/*.ts + blocks/tools  注册表:物品(含武器)、方块、配方、战利品、图鉴
 ├─ 核心层  src/core/*.ts               事件总线、存档分节、世界旗标(无游戏语义)
 └─ 世界层  world / chunk / worldgen / structures / lights / water / noise / player(物理)
    渲染层  textures / blockmesh / particles / sky / playermodel / sound(被各层使用)
@@ -83,6 +83,7 @@ interface GameEvents {
   playerDied: { source };
   playerRespawned: {};
   itemPickedUp: { id; count };
+  itemCrafted: { recipe; result; count };      // 合成成功(成就/任务/解锁挂这里)
   chestOpened: { x; y; z; loot: string };
   flagChanged: { key; value };              // 世界进度(boss 击败等)
 }
@@ -140,6 +141,8 @@ interface WeaponDef {
 "手持剑不能挖"查 `weapon.noMining`。今后加泰拉之刃 = 注册一条
 `{ kind:'weapon', weapon:{ damage:9, swingArc:2.1, projectile:{...} } }` + 图标,
 战斗系统零改动。图鉴(codex)条目也从注册表自动派生。
+`kind:'material'`(锭/凝胶类)是纯合成材料:不可放置、无使用行为,
+仅作为配方(§3.8d)的输入/产物流经背包与掉落物管线。
 
 ### 3.5 实体层(`src/game/entities.ts`)
 
@@ -235,6 +238,36 @@ interface WorldEventDef {
   (`event.bloodMoon.count`),为成就/进度留钩子。
 - **血月是参考实现**;南瓜月式波次事件在此上加 `waves` 进度字段(§8.路线图)。
 
+### 3.8d 合成系统(`src/content/recipes.ts` + `src/game/crafting.ts`)
+
+泰拉瑞亚合成模型:**配方是声明式数据**,系统只做三件事 —— 扫站台、算可合成、原子结算:
+
+```ts
+interface RecipeDef {
+  id: string;                                    // 稳定标识('iron-bar'),e2e/事件/成就用
+  result: number; count: number;                 // 产物(物品 id + 数量)
+  ingredients: { id: number; count: number }[];  // 配料(任意注册物品:方块/材料/装备…)
+  stations: number[];                            // 所需合成站方块 id,须全部在附近;[] = 徒手
+}
+```
+
+- **站台就是方块**:配方引用哪个方块 id,哪个方块就是合成站(工作台/熔炉/铁砧,
+  未来:祭坛/炼药桌)。BlockDef 上不加任何标记 —— `stationBlocks()` 从配方表反推
+  站台集合,`scanStations()` 只对这个集合做玩家周边扫描(水平 ±3、垂直 ±2,
+  泰拉式"站在旁边即可用")。
+- **可合成判定是纯函数**:`craftableTimes(slots, recipe)` 对全部 50 格计数。
+  列表 = 站台满足的配方(材料不足显示灰条不可点,站台不满足整条隐藏,引导找站台)。
+- **原子事务**:`performCraft` 校验 → 扣料 → 交付,任何一步失败整体回滚,
+  物品绝不凭空消失/出现。交付泰拉式:背包面板开着 → 产物落到**手中堆**
+  (同 id 并入,手持异物拒绝);面板关着(调试/e2e)→ 直接入包,放不下拒绝。
+- **UI 是背包面板的一个分区**(泰拉式合成列表),由 `inventory.onBagRefresh` 驱动
+  重算 —— 每次格子变动都会重绘背包,列表随之刷新;面板开着时无法改世界,
+  站台扫描结果不会失效。创造模式 E 面板是调色板,无合成列表。
+- 成功后广播 `itemCrafted`(总线)+ 音效;成就/任务/配方统计都挂事件。
+- 配方解锁条件(击败 boss 后可锻)= RecipeDef 加 `flag?` 字段 + 列表过滤一处,
+  留给 boss 系统;"就近宝箱取材"= 判定与扣料的槽位来源多传一组,接口已按
+  slots 数组抽象。加配方/站台见 §4.10。
+
 ### 3.8 UI 面板管理(`src/ui/panels.ts`)
 
 模态面板(背包/宝箱/图鉴/未来的对话/商店/合成)统一注册:
@@ -264,7 +297,7 @@ interface WorldEventDef {
 2. `textures.ts`:画 16px 武器图标(`paintTool`)。
 3. `content/items.ts`:注册 `{ kind:'weapon', weapon:{ damage, knockback, cooldown,
    swingArc, projectile:{ speed, life, damage, gravity:0, pierce } } }`。
-4. 获取途径:宝箱战利品表 / 合成(未来)。
+4. 获取途径:宝箱战利品表 / 合成配方(§4.10)。
 5. **不需要**改 combat/mining/interact——它们只读注册表。
    天顶剑类环绕武器:`weapon.orbit` + projectiles 的追踪模式(§3.5)。
 
@@ -299,7 +332,7 @@ interface WorldEventDef {
 1. `tools.ts` 加 id(100+ 空间顺延),`textures.ts` 画 16px 图标(paintTool)。
 2. `content/items.ts` 注册:盔甲 `{ kind:'armor', maxStack:1, armor:{slot,defense} }`,
    饰品 `{ kind:'accessory', maxStack:1, accessory:{ stats:{ moveSpeed:0.25 } } }`。
-3. 获取途径入战利品表(structures.CHEST_LOOT)或合成(未来)。
+3. 获取途径入战利品表(structures.CHEST_LOOT)或合成配方(§4.10)。
 4. **不需要**改 equipment/combat/player —— 属性经 StatSheet 聚合自动生效;
    只有全新行为(新 StatSheet 字段)才碰对应系统。图鉴自动收录。
 
@@ -309,6 +342,21 @@ interface WorldEventDef {
 2. 特殊触发(召唤物)= 交互注册表调 `worldEvents.start(id)`。
 3. 新修饰类型(换刷怪表/换音乐):WorldEventDef 加字段 + 消费系统读一处。
 4. e2e:`__game.worldEvents.start/stop` 确定性驱动。
+
+### 4.10 加一条合成配方 / 加一个合成站(§3.8d)
+
+配方:`content/recipes.ts` 里 `registerRecipe({ id, result, count, ingredients, stations })`
+一条数据即完成 —— 列表/判定/结算/UI 全自动,**不改 crafting/inventory/hud**。
+配料与产物可以是任意注册物品(方块/工具/武器/装备/材料)。
+
+新材料物品(锭/凝胶类):`tools.ts` 的 `Mat` 加 id(130+ 顺延)→ `textures.ts`
+`paintTool` 画 16px 图标 → `content/items.ts` 注册 `{ kind:'material' }`
+(不可放置,自动进背包/掉落物/图鉴管线)。
+
+新合成站:按 §4.1 加一种方块(贴图/BLOCK_DEFS/PLACEABLE),再在配方的
+`stations` 里引用它 —— **被引用即成为站台**,无需其他注册。站台自身的获取
+也走配方,形成泰拉式站台链(工作台徒手 → 熔炉要工作台 → 铁砧要熔炉炼的锭)。
+e2e 契约:`__game.craft.list/craft/stations`。
 
 ### 4.9 加存档字段 / 加面板
 
@@ -327,7 +375,8 @@ interface WorldEventDef {
 
 ## 6. 不变量(破坏 = 事故)
 
-1. **id 空间**:方块 `0..99`(现用到 53),物品/工具/武器 `100+`(现用到 103)。
+1. **id 空间**:方块 `0..99`(现用到 56),物品 `100+`:工具/武器 `100-109`、
+   装备 `110-119`、饰品 `120-129`、材料 `130+`(现用到 130)。
    id 只增不改不删——存档里存的是裸 id。方块朝向变体(南瓜式)占连续 id 并提供
    `baseBlock` 归一化。
 2. **存档**:key `mc-demo-save-v1`、顶层字段含义不变;字段只增;`load` 容忍缺失。
@@ -352,13 +401,20 @@ interface WorldEventDef {
 波次事件(南瓜月:WorldEventDef 加 waves/score,黎明结算)→ 事件专属刷怪表与掉落
 → 药水 buff(同一 StatSheet 聚合,带时限来源)。
 
+**A3. 合成系统骨架(里程碑 58 落地)**:配方注册表(§3.8d)+ 合成站三件
+(工作台/熔炉/铁砧,站台链)+ 材料类物品(铁锭)+ 背包面板合成分区。
+参考实现:原木→木板→工作台→熔炉→铁锭→铁砧→铁甲三件(泰拉进阶闭环)。
+后续:武器/饰品配方树(接 B 段)→ 配方解锁条件(flag,接 boss 进度)→
+祭坛类特殊站台(仅世界生成、不可放置)→ 药水/食物(consumable)→ 就近宝箱取材。
+
 **B. 武器系统**:近战扇形挥砍与冷却 → 弹幕武器(剑气)→ 武器分级与战利品分布
-→ 泰拉之刃 → 天顶剑(环绕+追踪)。伤害数字、命中音效打磨。
+→ 泰拉之刃 → 天顶剑(环绕+追踪)。伤害数字、命中音效打磨。获取全面走 §4.10 配方
+(锭分级:铁→金→…)+ 战利品表。
 
 **C. boss 系统**:boss 框架(血池/阶段/血条/召唤/掉落/旗标)→ 第一个 boss
 (克苏鲁之眼式单体,血腥地恶魔之心召唤)→ 多部件 boss(骷髅王式)→ 击败推进世界进度。
 
-**D. NPC 与大世界交互**:门/祭坛等交互方块 → NPC 框架(对话/商店/入住)→
-世界事件(血月)→ 合成系统(祭坛/工作台界面)。
+**D. NPC 与大世界交互**:门/祭坛等交互方块 → NPC 框架(对话/商店/入住)。
+(世界事件已落地 §3.8c;合成系统已落地 §3.8d,祭坛作为特殊站台在此接入。)
 
 **E. 持续**:每阶段保持"可玩、稳定、像泰拉瑞亚"三条底线(CLAUDE.md 优先级)。
