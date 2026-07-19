@@ -24,10 +24,13 @@ export function materialOf(blockId: number): Material {
     case Block.EbonStone:
     case Block.Hellstone:
     case Block.DungeonBrick:
+    case Block.Furnace:
+    case Block.Anvil:
       return 'stone';
     case Block.Log:
     case Block.Plank:
     case Block.Chest:
+    case Block.Workbench:
     case Block.Pumpkin:
     case Block.PumpkinE:
     case Block.PumpkinN:

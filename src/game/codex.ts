@@ -4,7 +4,7 @@ import { Block } from '../blocks';
 import { itemDesc, itemIcon, itemName, type IconSource } from '../content/items';
 import type { CodexCategory } from '../hud';
 import { buildMobTextures } from '../textures';
-import { Equip, Tool } from '../tools';
+import { Equip, Mat, Tool } from '../tools';
 
 const entry = (icons: IconSource, id: number) => ({
   icon: itemIcon(icons, id),
@@ -39,12 +39,15 @@ export function buildCodexCategories(icons: IconSource): CodexCategory[] {
       title: '矿物 · 金属',
       entries: [
         Block.CoalOre, Block.IronOre, Block.GoldOre, Block.DiamondOre,
-        Block.IronBlock, Block.GoldBlock, Block.DiamondBlock,
+        Block.IronBlock, Block.GoldBlock, Block.DiamondBlock, Mat.IronBar,
       ].map(e),
     },
     {
       title: '家具 · 可交互',
-      entries: [Block.Torch, Block.Glowstone, Block.TNT, Block.Chest].map(e),
+      entries: [
+        Block.Torch, Block.Glowstone, Block.TNT, Block.Chest,
+        Block.Workbench, Block.Furnace, Block.Anvil,
+      ].map(e),
     },
     {
       title: '工具 · 武器',

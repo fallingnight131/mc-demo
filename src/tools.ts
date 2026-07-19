@@ -33,6 +33,11 @@ export const Equip = {
   Horseshoe: 122, // 幸运马蹄铁(摔落免疫)
 } as const;
 
+// 合成材料 id(130+ 顺延;kind='material',不可放置,ARCHITECTURE.md §4.10)
+export const Mat = {
+  IronBar: 130, // 铁锭(熔炉炼铁矿石)
+} as const;
+
 export function isTool(id: number): boolean {
   return id >= 100;
 }

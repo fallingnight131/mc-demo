@@ -44,9 +44,9 @@ describe('item registry', () => {
     expect(miningBoost(Block.Air, Block.Stone)).toBe(1);
   });
 
-  it('背包物品全集 = 可放置方块 + 工具武器 + 装备饰品;流体不是物品', () => {
+  it('背包物品全集 = 可放置方块 + 工具武器 + 装备饰品 + 材料;流体不是物品', () => {
     const items = inventoryItems();
-    expect(items).toEqual([...PLACEABLE, ...TOOL_IDS, 110, 111, 112, 120, 121, 122]);
+    expect(items).toEqual([...PLACEABLE, ...TOOL_IDS, 110, 111, 112, 120, 121, 122, 130]);
     expect(itemDef(Block.Water)).toBeUndefined();
     expect(itemDef(Block.Lava)).toBeUndefined();
   });

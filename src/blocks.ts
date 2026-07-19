@@ -1,7 +1,7 @@
 // 方块与纹理图集定义(纯数据,不依赖 DOM)
 
 export const ATLAS_COLS = 8;
-export const ATLAS_ROWS = 7;
+export const ATLAS_ROWS = 8;
 export const TILE_PX = 16;
 
 // 图集中的纹理格索引
@@ -61,6 +61,14 @@ export const Tile = {
   Crimstone: 52, // 猩红石
   CrimsonLeaves: 53, // 血腥树叶
   CrimsonVine: 54, // 血腥藤(十字面片)
+  // 合成站(里程碑 58)
+  WorkbenchTop: 55, // 工作台桌面
+  WorkbenchSide: 56, // 工作台侧面(桌腿)
+  FurnaceSide: 57, // 熔炉侧面
+  FurnaceFront: 58, // 熔炉炉口(火光)
+  FurnaceTop: 59, // 熔炉顶面
+  AnvilTop: 60, // 铁砧顶面(砧面)
+  AnvilSide: 61, // 铁砧侧面(砧腰)
 } as const;
 
 export const Block = {
@@ -122,6 +130,10 @@ export const Block = {
   Crimstone: 51,
   CrimsonLeaves: 52,
   CrimsonVine: 53,
+  // 合成站(ARCHITECTURE.md §3.8d:被配方 stations 引用即成为站台)
+  Workbench: 54, // 工作台:徒手 10 木板制作,解锁工作台配方
+  Furnace: 55, // 熔炉:炼矿/烧玻璃
+  Anvil: 56, // 铁砧:锻造铁器
 } as const;
 
 export interface BlockDef {
@@ -206,6 +218,10 @@ export const BLOCK_DEFS: BlockDef[] = [
   { name: '猩红石', tiles: [T.Crimstone, T.Crimstone, T.Crimstone, T.Crimstone, T.Crimstone, T.Crimstone], solid: true, opaque: true, hardness: 1.4 },
   { name: '血腥树叶', tiles: [T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves, T.CrimsonLeaves], solid: true, opaque: true, hardness: 0.2, sway: true },
   { name: '血腥藤', tiles: [T.CrimsonVine, T.CrimsonVine, T.CrimsonVine, T.CrimsonVine, T.CrimsonVine, T.CrimsonVine], solid: false, opaque: false, hardness: 0.1, shape: 'cross', needsGround: true, sway: true },
+  // 合成站(家具:须放在实体方块顶面)
+  { name: '工作台', tiles: [T.WorkbenchSide, T.WorkbenchSide, T.WorkbenchTop, T.WorkbenchSide, T.WorkbenchSide, T.WorkbenchSide], solid: true, opaque: true, hardness: 0.8, needsGround: true },
+  { name: '熔炉', tiles: [T.FurnaceSide, T.FurnaceSide, T.FurnaceTop, T.FurnaceTop, T.FurnaceFront, T.FurnaceSide], solid: true, opaque: true, hardness: 1.5, needsGround: true, glow: 0.25 },
+  { name: '铁砧', tiles: [T.AnvilSide, T.AnvilSide, T.AnvilTop, T.AnvilTop, T.AnvilSide, T.AnvilSide], solid: true, opaque: true, hardness: 2.2, needsGround: true },
 ];
 
 /** 方块发光等级(0..15) */
@@ -264,6 +280,9 @@ export const PLACEABLE: number[] = [
   Block.JungleFern,
   Block.CorruptThorn,
   Block.CrimsonVine,
+  Block.Workbench,
+  Block.Furnace,
+  Block.Anvil,
 ];
 
 /** 按放置者视角选南瓜朝向:脸转向玩家 */

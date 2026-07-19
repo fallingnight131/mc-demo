@@ -107,6 +107,8 @@ export class Inventory {
   isCreative: () => boolean = () => false;
   /** E 面板(背包网格)是否开着 —— 拾取时同步重绘 */
   bagOpen = false;
+  /** 背包网格每次重绘后的回调(main 接线:合成列表随之重算,§3.8d) */
+  onBagRefresh: (() => void) | null = null;
   /** 装备系统(main 注入;装备槽是背包面板的一个分区) */
   equipment: Equipment | null = null;
   private creativeBackup: CreativeBackup | null = null;
@@ -268,6 +270,7 @@ export class Inventory {
       (area, idx, button) => this.onBagCell(area, idx, button),
     );
     this.hud.setDragGhost(this.bagView(this.cursor));
+    this.onBagRefresh?.();
   }
 
   /** 格子点击:空手 → 拿起(右键拿一半);持堆 → 放下/并入/交换(右键放一个)。

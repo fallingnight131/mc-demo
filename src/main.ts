@@ -15,6 +15,7 @@ import { getAccount } from './game/account';
 import { Ambience, layerNameOf } from './game/ambience';
 import { buildCodexCategories } from './game/codex';
 import { Combat } from './game/combat';
+import { Crafting } from './game/crafting';
 import { EntityManager } from './game/entities';
 import { Equipment } from './game/equipment';
 import { Flags } from './game/flags';
@@ -289,6 +290,19 @@ interact.registerBlockUse(Block.TNT, (hit) => {
   tnt.ignite(hit.x, hit.y, hit.z);
   return true;
 });
+
+// 合成系统(ARCHITECTURE.md §3.8d):列表是背包面板的分区,随每次网格重绘重算
+const crafting = new Crafting({
+  getBlock: (x, y, z) => world.getBlock(x, y, z),
+  playerPos: () => player.pos,
+  inventory,
+  hud,
+  icons: mats.textures,
+  sound,
+  events,
+  save,
+});
+inventory.onBagRefresh = () => crafting.renderList();
 
 // --- 生物事件接线 ---
 mobs.onDeath = (kind, x, y, z) => {
@@ -691,6 +705,11 @@ if (new URLSearchParams(location.search).has('test')) {
       start: (id: string) => worldEvents.start(id),
       stop: () => worldEvents.stop(),
       spawnTuning: () => ({ rate: mobs.spawnRateMul, cap: mobs.spawnCapMul }),
+    },
+    craft: {
+      list: () => crafting.list().map((e) => ({ id: e.recipe.id, times: e.times })),
+      craft: (id: string) => crafting.craft(id),
+      stations: () => [...crafting.stations()],
     },
     mobs: {
       count: () => mobs.count,

@@ -2780,6 +2780,121 @@ check(
     `黎明后 active=${afterDawn.active},倍率复位 ${afterDawn.tuning.rate}`,
 );
 
+// --- 里程碑 58:合成系统(配方注册表 + 站台链 + 背包面板合成分区) ---
+// 徒手链:原木→木板→火把/工作台(craft 调试通道,面板关着 → 产物直接入包)
+const craftHand = await page.evaluate(() => {
+  const g = window.__game;
+  g.setCreative(false);
+  const owned = () => ({
+    log: g.ui.owned(5),
+    plank: g.ui.owned(7),
+    torch: g.ui.owned(33),
+    wb: g.ui.owned(54),
+  });
+  const before = owned();
+  const noStation = g.craft.list().map((e) => e.id); // 附近无站台:站台配方应隐藏
+  const okPlank = g.craft.craft('plank'); // 原木 1 → 木板 4
+  const okTorch = g.craft.craft('torch'); // 木板 1 → 火把 3
+  const okWb = g.craft.craft('workbench'); // 木板 10 → 工作台 1
+  const okFurnaceEarly = g.craft.craft('furnace'); // 无工作台在场:必须失败
+  return { before, after: owned(), noStation, okPlank, okTorch, okWb, okFurnaceEarly };
+});
+check(
+  '合成:徒手链(原木→木板→火把/工作台),站台配方未解锁前隐藏',
+  craftHand.okPlank &&
+    craftHand.okTorch &&
+    craftHand.okWb &&
+    !craftHand.okFurnaceEarly &&
+    !craftHand.noStation.includes('furnace') &&
+    !craftHand.noStation.includes('iron-bar') &&
+    craftHand.noStation.includes('plank') &&
+    craftHand.after.log === craftHand.before.log - 1 &&
+    craftHand.after.plank === craftHand.before.plank + 4 - 1 - 10 &&
+    craftHand.after.torch === craftHand.before.torch + 3 &&
+    craftHand.after.wb === craftHand.before.wb + 1,
+  `徒手列表 [${craftHand.noStation.join(',')}];原木 ${craftHand.before.log}→${craftHand.after.log},` +
+    `木板 ${craftHand.before.plank}→${craftHand.after.plank},火把 ${craftHand.before.torch}→${craftHand.after.torch},` +
+    `工作台 ${craftHand.before.wb}→${craftHand.after.wb},无站台合成熔炉=${craftHand.okFurnaceEarly}`,
+);
+
+// 站台链:放置工作台→熔炉→铁砧(±3 格内),逐级解锁配方直至锻出铁甲
+const craftStation = await page.evaluate(() => {
+  const g = window.__game;
+  const p = g.player.pos;
+  const bx = Math.floor(p.x);
+  const by = Math.floor(p.y);
+  const bz = Math.floor(p.z);
+  g.world.setBlock(bx + 2, by, bz, 54); // 工作台
+  const withWb = g.craft.list().map((e) => e.id);
+  const okFurnace = g.craft.craft('furnace'); // @工作台
+  g.world.setBlock(bx - 2, by, bz, 55); // 熔炉
+  const bars0 = g.ui.owned(130);
+  const ore0 = g.ui.owned(22);
+  const okBar = g.craft.craft('iron-bar'); // 铁矿 3 → 铁锭 1 @熔炉
+  g.world.setBlock(bx, by, bz + 2, 56); // 铁砧
+  const helm0 = g.ui.owned(110);
+  const okHelmet = g.craft.craft('iron-helmet'); // 铁锭 8 @铁砧
+  return {
+    withWb,
+    okFurnace,
+    okBar,
+    okHelmet,
+    stations: g.craft.stations().sort((a, b) => a - b),
+    bars0,
+    ore0,
+    bars1: g.ui.owned(130),
+    ore1: g.ui.owned(22),
+    helm0,
+    helm1: g.ui.owned(110),
+  };
+});
+check(
+  '合成:站台链解锁(工作台→熔炉炼锭→铁砧锻甲)',
+  craftStation.withWb.includes('furnace') &&
+    craftStation.okFurnace &&
+    craftStation.okBar &&
+    craftStation.okHelmet &&
+    craftStation.stations.join(',') === '54,55,56' &&
+    craftStation.ore1 === craftStation.ore0 - 3 &&
+    craftStation.bars1 === craftStation.bars0 + 1 - 8 &&
+    craftStation.helm1 === craftStation.helm0 + 1,
+  `工作台旁列表含熔炉 ${craftStation.withWb.includes('furnace')},站台 [${craftStation.stations}],` +
+    `铁矿 ${craftStation.ore0}→${craftStation.ore1},铁锭 ${craftStation.bars0}→${craftStation.bars1},` +
+    `头盔 ${craftStation.helm0}→${craftStation.helm1}`,
+);
+
+// 背包面板合成分区:点「火把」行 → 产物落到手中堆(拖拽幽灵);关面板归还入包
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(250);
+const craftUi0 = await page.evaluate(() => ({
+  torch: window.__game.ui.owned(33),
+  rows: document.querySelectorAll('#bag-craft .craft-item').length,
+  hint: document.getElementById('craft-hint').textContent,
+}));
+await page.click('#bag-craft .craft-item[title="火把"]');
+await page.waitForTimeout(150);
+const craftGhost = await page.evaluate(() => {
+  const ghost = document.getElementById('drag-ghost');
+  return {
+    show: ghost.classList.contains('show'),
+    badge: ghost.querySelector('.bag-count')?.textContent ?? '',
+  };
+});
+await page.screenshot({ path: `${OUT}/35-crafting.png` }); // 面板开着:合成分区 + 手中堆
+await page.keyboard.press('KeyE'); // 关面板:手中堆归还背包
+await page.waitForTimeout(200);
+const craftUi1 = await page.evaluate(() => ({ torch: window.__game.ui.owned(33) }));
+check(
+  '合成:面板分区点击,产物落手中堆并随关面板入包',
+  craftUi0.rows >= 11 &&
+    craftUi0.hint.includes('站台') &&
+    craftGhost.show &&
+    craftGhost.badge === '3' &&
+    craftUi1.torch === craftUi0.torch + 3,
+  `列表 ${craftUi0.rows} 行,提示"${craftUi0.hint}",幽灵 ${craftGhost.show}(×${craftGhost.badge}),` +
+    `火把 ${craftUi0.torch}→${craftUi1.torch}`,
+);
+
 // --- 里程碑 53:账号 + 云存档链路(独立浏览器上下文;?test&account=1 启用网络) ---
 if (await apiHealthy()) {
   const acc = await browser.newPage({ viewport: { width: 1280, height: 800 } });

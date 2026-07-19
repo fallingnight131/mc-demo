@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { ATLAS_COLS, ATLAS_ROWS, BLOCK_DEFS, Tile, TILE_PX } from './blocks';
 import { mulberry32 } from './noise';
-import { Equip, Tool } from './tools';
+import { Equip, Mat, Tool } from './tools';
 
 const TS = TILE_PX;
 
@@ -593,6 +593,107 @@ const painters: Record<number, Painter> = {
     dark(9, 11);
     dark(10, 11);
   },
+  // --- 合成站(里程碑 58) ---
+  [Tile.WorkbenchTop]: (img, rng) => {
+    // 桌面:木板底 + 深色包边 + 四角钉帽 + 中央磨损
+    painters[Tile.Plank](img, rng);
+    for (let i = 0; i < TS; i++) {
+      px(img, i, 0, 96, 68, 36);
+      px(img, i, TS - 1, 96, 68, 36);
+      px(img, 0, i, 96, 68, 36);
+      px(img, TS - 1, i, 96, 68, 36);
+    }
+    for (const [nx, ny] of [[1, 1], [14, 1], [1, 14], [14, 14]] as const) {
+      px(img, nx, ny, 216, 218, 224);
+    }
+    for (let i = 0; i < 10; i++) {
+      px(img, 4 + ((rng() * 8) | 0), 5 + ((rng() * 6) | 0), 140, 110, 66);
+    }
+  },
+  [Tile.WorkbenchSide]: (img, rng) => {
+    // 侧面:桌板沿(上 4 行木板)+ 阴影背景里两条桌腿 + 横撑
+    painters[Tile.Plank](img, rng);
+    for (let y = 4; y < TS; y++) {
+      for (let x = 0; x < TS; x++) {
+        const v = (rng() * 2 - 1) * 6;
+        px(img, x, y, clamp255(56 + v), clamp255(42 + v), clamp255(26 + v));
+      }
+    }
+    for (const x0 of [1, 12]) {
+      for (let y = 4; y < TS; y++) {
+        px(img, x0, y, 88, 66, 38);
+        px(img, x0 + 1, y, 128, 100, 60);
+        px(img, x0 + 2, y, 88, 66, 38);
+      }
+    }
+    for (let x = 3; x <= 12; x++) {
+      px(img, x, 9, 118, 92, 54);
+      px(img, x, 10, 96, 72, 42);
+    }
+  },
+  [Tile.FurnaceSide]: (img, rng) => {
+    // 侧面:圆石炉身 + 顶部烟熏
+    painters[Tile.Cobble](img, rng);
+    for (let x = 0; x < TS; x++) {
+      if (rng() < 0.7) px(img, x, 0, 74, 70, 66);
+      if (rng() < 0.4) px(img, x, 1, 86, 82, 78);
+    }
+  },
+  [Tile.FurnaceFront]: (img, rng) => {
+    // 炉口:圆石炉身 + 拱形黑口 + 底部火光
+    painters[Tile.Cobble](img, rng);
+    for (let y = 6; y <= 12; y++) {
+      for (let x = 4; x <= 11; x++) {
+        if (y === 6 && (x === 4 || x === 11)) continue; // 拱肩
+        px(img, x, y, 26, 20, 18);
+      }
+    }
+    for (let x = 5; x <= 10; x++) {
+      const h = 10 - ((rng() * 3) | 0); // 火苗高低错落
+      for (let y = 12; y >= h; y--) {
+        const hot = y >= 11 || rng() < 0.4;
+        px(img, x, y, hot ? 255 : 236, hot ? 196 : 120, hot ? 64 : 24);
+      }
+    }
+  },
+  [Tile.FurnaceTop]: (img, rng) => {
+    // 顶面:石底 + 方形烟口,口内余烬
+    painters[Tile.Stone](img, rng);
+    for (let y = 4; y <= 11; y++) {
+      for (let x = 4; x <= 11; x++) {
+        const rim = y === 4 || y === 11 || x === 4 || x === 11;
+        if (rim) px(img, x, y, 66, 62, 58);
+        else px(img, x, y, 34, 30, 28);
+      }
+    }
+    for (let i = 0; i < 6; i++) {
+      px(img, 5 + ((rng() * 6) | 0), 5 + ((rng() * 6) | 0), 224, 112, 32);
+    }
+  },
+  [Tile.AnvilTop]: (img, rng) => {
+    // 砧面:深钢金属 + 中央锻打磨痕
+    metalPaint(img, rng, [118, 122, 130]);
+    for (let x = 3; x <= 12; x++) {
+      if (rng() < 0.6) px(img, x, 7, 88, 92, 100);
+      if (rng() < 0.6) px(img, x, 8, 96, 100, 108);
+    }
+  },
+  [Tile.AnvilSide]: (img, rng) => {
+    // 侧面:阴影底上的铁砧剪影(砧台/砧腰/砧脚)
+    noiseFill(img, rng, [52, 50, 56], 5);
+    const steel = (x: number, y: number, d = 0) =>
+      px(img, x, y, clamp255(150 + d), clamp255(156 + d), clamp255(165 + d));
+    for (let y = 2; y <= 5; y++) {
+      for (let x = 1; x <= 14; x++) steel(x, y, y === 2 ? 60 : y === 5 ? -30 : 0);
+    }
+    for (let y = 6; y <= 9; y++) {
+      for (let x = 6; x <= 9; x++) steel(x, y, -36);
+    }
+    for (let y = 10; y <= 12; y++) {
+      for (let x = 4; x <= 11; x++) steel(x, y, y === 12 ? -50 : -16);
+    }
+    for (let x = 3; x <= 12; x++) px(img, x, 13, 70, 74, 84);
+  },
 };
 
 /** 石底 + 矿物斑块 */
@@ -1013,6 +1114,32 @@ function paintTool(img: ImageData, toolId: number): void {
     );
     dots([[6, 5], [9, 5], [5, 7], [10, 7], [5, 9], [10, 9]], [120, 88, 24]); // 钉孔
     dots([[5, 4], [6, 4], [4, 5]], [255, 238, 160]);
+  } else if (toolId === Mat.IronBar) {
+    // 铁锭:梯形锭块,上窄下宽,顶面受光
+    const outline: [number, number, number] = [50, 53, 60];
+    const rows: Array<[number, number, number, number, number, number]> = [
+      // [y, 左轮廓x, 填充起x, 填充止x, 右轮廓x, 亮度档]
+      [5, 5, 6, 9, 10, 2],
+      [6, 5, 6, 10, 11, 2],
+      [7, 4, 5, 10, 11, 1],
+      [8, 4, 5, 11, 12, 1],
+      [9, 3, 4, 11, 12, 0],
+      [10, 3, 4, 12, 13, 0],
+    ];
+    const fills: Array<[number, number, number]> = [
+      [138, 144, 154], // 暗(下)
+      [176, 182, 192], // 中
+      [216, 222, 230], // 亮(上)
+    ];
+    dots([[6, 4], [7, 4], [8, 4], [9, 4]], outline); // 顶棱
+    for (const [y, lx, fx0, fx1, rx, tone] of rows) {
+      P(lx, y, outline[0], outline[1], outline[2]);
+      P(rx, y, outline[0], outline[1], outline[2]);
+      const c = fills[tone];
+      for (let x = fx0; x <= fx1; x++) P(x, y, c[0], c[1], c[2]);
+    }
+    for (let x = 3; x <= 13; x++) P(x, 11, outline[0], outline[1], outline[2]); // 底棱
+    dots([[6, 5], [7, 5], [6, 6]], [244, 248, 252]); // 高光
   } else {
     // 打火石:深灰燧石 + 银色火镰,带一颗火花
     dots(

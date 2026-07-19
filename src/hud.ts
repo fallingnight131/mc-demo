@@ -32,6 +32,16 @@ export type BagSlotView = ChestSlotView | null;
 /** 背包网格分区:物品栏行 / 背包区 / 装备槽 / 丢弃栏 */
 export type BagArea = 'hotbar' | 'bag' | 'equip' | 'trash';
 
+/** 合成行视图(§3.8d):产物 + 产量 + 可合成次数(0 = 灰条不可点)+ 配料描述 */
+export interface CraftRowView {
+  id: string;
+  name: string;
+  icon: HTMLCanvasElement;
+  count: number;
+  times: number;
+  need: string;
+}
+
 /** 图标画布可能同时出现在快捷栏与背包的多个槽位,DOM 中必须用副本 */
 function copyIcon(src: HTMLCanvasElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -160,6 +170,36 @@ export class HUD {
     renderGrid(document.getElementById('bag-main')!, bag, 'bag');
     renderGrid(document.getElementById('bag-equip')!, equip, 'equip', equipLabels);
     renderGrid(document.getElementById('bag-trash')!, [trash], 'trash');
+  }
+
+  /** 背包面板合成分区:站台提示 + 配方行(材料不足 = 灰条;title 保持纯名称) */
+  buildCraft(rows: CraftRowView[], stationHint: string, onCraft: (id: string) => void): void {
+    document.getElementById('craft-hint')!.textContent = stationHint;
+    const el = document.getElementById('bag-craft')!;
+    el.innerHTML = '';
+    for (const r of rows) {
+      const row = document.createElement('div');
+      row.className = 'craft-item' + (r.times > 0 ? '' : ' lack');
+      row.title = r.name;
+      row.appendChild(copyIcon(r.icon));
+      const name = document.createElement('span');
+      name.className = 'craft-name';
+      name.textContent = r.count > 1 ? `${r.name} ×${r.count}` : r.name;
+      row.appendChild(name);
+      const need = document.createElement('span');
+      need.className = 'craft-need';
+      need.textContent = r.need;
+      row.appendChild(need);
+      if (r.times > 0) {
+        row.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.button === 0) onCraft(r.id);
+        });
+      }
+      row.addEventListener('contextmenu', (e) => e.preventDefault());
+      el.appendChild(row);
+    }
   }
 
   /** 拖拽手中堆的浮动幽灵(跟随指针;null 隐藏) */

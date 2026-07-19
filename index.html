@@ -497,6 +497,52 @@
         border-color: rgba(224, 108, 108, 0.55);
         background: rgba(224, 108, 108, 0.1);
       }
+      /* 合成分区(泰拉式配方列表):可合成亮行,材料不足灰条 */
+      #bag-craft {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 136px;
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+      .craft-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(232, 196, 120, 0.4);
+        background: rgba(232, 196, 120, 0.07);
+        cursor: pointer;
+      }
+      .craft-item:hover {
+        background: rgba(232, 196, 120, 0.18);
+      }
+      .craft-item canvas {
+        width: 28px;
+        height: 28px;
+        image-rendering: pixelated;
+        pointer-events: none;
+      }
+      .craft-name {
+        font-size: 12px;
+        color: #eee;
+        white-space: nowrap;
+      }
+      .craft-need {
+        font-size: 11px;
+        color: #9fb4d4;
+        margin-left: auto;
+        text-align: right;
+      }
+      .craft-item.lack {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .craft-item.lack:hover {
+        background: rgba(232, 196, 120, 0.07);
+      }
       .bag-hint {
         font-size: 11px;
         color: #8fa4c0;
@@ -1106,6 +1152,8 @@
           <div id="bag-main" class="bag-grid"></div>
           <div class="bag-label">装备 — 头 / 身 / 腿 + 饰品 ×5</div>
           <div id="bag-equip" class="bag-grid bag-grid-equip"></div>
+          <div class="bag-label">合成 — <span id="craft-hint"></span></div>
+          <div id="bag-craft"></div>
           <div class="bag-foot">
             <span class="bag-label">丢弃栏 🗑</span>
             <div id="bag-trash" class="bag-grid bag-trash"></div>

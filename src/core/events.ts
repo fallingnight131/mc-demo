@@ -18,6 +18,8 @@ export interface GameEvents {
   playerDied: { source: DamageSource };
   playerRespawned: { x: number; y: number; z: number };
   itemPickedUp: { id: number; count: number };
+  /** 合成成功(recipe = 配方稳定 id;成就/任务/图鉴解锁挂这里) */
+  itemCrafted: { recipe: string; result: number; count: number };
   chestOpened: { x: number; y: number; z: number };
   /** 世界进度旗标变化(boss 击败/事件解锁,见 game/flags.ts) */
   flagChanged: { key: string; value: number | boolean };

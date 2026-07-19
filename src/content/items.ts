@@ -6,10 +6,10 @@
 import { baseBlock, Block, BLOCK_DEFS, PLACEABLE } from '../blocks';
 import { STACK_MAX } from '../chest';
 import { materialOf } from '../sound';
-import { Equip, Tool, TOOL_DEFS } from '../tools';
+import { Equip, Mat, Tool, TOOL_DEFS } from '../tools';
 import type { StatMods } from '../game/stats';
 
-export type ItemKind = 'block' | 'tool' | 'weapon' | 'armor' | 'accessory';
+export type ItemKind = 'block' | 'tool' | 'weapon' | 'armor' | 'accessory' | 'material';
 
 /** 盔甲件:槽型 + 防御 */
 export interface ArmorDef {
@@ -88,6 +88,9 @@ function describeBlock(id: number): string {
     [Block.Pumpkin]: '放置时脸朝玩家',
     [Block.DungeonBrick]: '地牢建材 · 坚硬',
     [Block.Cloud]: '天空岛材质',
+    [Block.Workbench]: '合成站 · 徒手 10 木板制作',
+    [Block.Furnace]: '合成站 · 炼矿烧玻璃',
+    [Block.Anvil]: '合成站 · 锻造铁器',
   };
   if (curated[id]) return curated[id];
   const def = BLOCK_DEFS[id];
@@ -160,6 +163,14 @@ armor(Equip.IronLegs, '铁护腿', 'legs', 2);
 accessory(Equip.SwiftCharm, '疾风护符', '移动速度 +25%', { moveSpeed: 0.25 });
 accessory(Equip.CloudBottle, '云朵瓶', '可以二段跳', { extraJumps: 1 });
 accessory(Equip.Horseshoe, '幸运马蹄铁', '免疫摔落伤害', { noFallDamage: true });
+
+// 合成材料(ARCHITECTURE.md §4.10:注册数据 + 图标即入背包/掉落物/图鉴管线)
+defs.set(Mat.IronBar, {
+  id: Mat.IronBar,
+  name: '铁锭',
+  kind: 'material',
+  desc: '熔炉炼铁矿石而得 · 铁器合成材料',
+});
 
 export function itemDef(id: number): ItemDef | undefined {
   return defs.get(id);
